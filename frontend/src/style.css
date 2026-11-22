@@ -1820,7 +1820,7 @@ button.scan-status[hidden] { display: none; }
 .group-attr-h .ma-dim { font-weight: 400; }
 .group-attr-h .btn-icon { margin-left: auto; }
 .group-attr .tog-row { display: flex; flex-wrap: wrap; gap: 4px; }
-.ignored-check { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--border); border-radius: 10px; padding: 1px 2px 1px 10px; font-size: 12px; color: var(--text-dim); }
+.ignored-check { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--accent); border-radius: 10px; padding: 1px 2px 1px 10px; font-size: 12px; color: var(--text); }
 .ignored-check-x { border: 0; background: none; color: var(--text-dim); cursor: pointer; font: inherit; padding: 0 6px; }
 .ignored-check-x:hover { color: var(--accent); }
 .ignore-pick { font: inherit; font-size: 12px; }
