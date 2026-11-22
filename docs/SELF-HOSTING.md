@@ -100,9 +100,18 @@ for a container `HEALTHCHECK` or an uptime monitor:
 
 Everything worth keeping lives in the config volume: `library.db` (the index,
 staged changes, groups and undo history) and `settings.json`. Back that volume
-up. The index can always be rebuilt with a rescan, but settings, staged
+up. The index can always be rebuilt with a rescan, but settings, groups, staged
 changes and undo history can't. Without `TGGR_SECRET_KEY`, the backup holds
 your API keys in plain text.
+
+**Settings → Data → Backup** makes the same backup from the browser: one zip
+with any of *data* (a consistent snapshot of `library.db`, plus the trash that
+undo restores from), *settings*, *interface* preferences and *environment*
+(`tggr.env`, the `TGGR_*` variables the server runs with; secrets only if you
+tick them). **Restore** replaces the parts you pick, so a new config volume can
+start from a backup. Settings restored from a backup need the same
+`TGGR_SECRET_KEY` to read their API keys; the environment part is a reference
+for setting up the new container and is never applied by a restore.
 
 Deleted files are moved to `/config/trash` (recoverable via Undo) until you
 empty the trash from Settings.
@@ -116,6 +125,7 @@ so a missing tool is never fatal — it just removes that feature:
 |---|---|---|
 | ReplayGain scanning | `rsgain` or `loudgain` | `rsgain`, yes |
 | Spectrograms | `ffmpeg` | yes |
+| Clean up → Convert audio | `ffmpeg` + `ffprobe` (with `libmp3lame`) | yes |
 | AcoustID fingerprinting | `fpcalc` (chromaprint) + an API key | `fpcalc`, yes |
 
 Rendered spectrograms are cached under `/config/spectrograms`, keyed by track
@@ -129,4 +139,11 @@ docker compose pull && docker compose up -d
 ```
 
 Schema changes migrate automatically on start; your library and settings are
-preserved.
+preserved. Some releases re-read every file once after the update (the
+Background tab in Settings shows the progress), because the scan learned new
+tags; the library stays usable meanwhile.
+
+`latest` follows main. To stay on a release, pin `X.Y.Z` (or `X.Y`), or pin a
+digest (`ghcr.io/beartums/tggr:X.Y.Z@sha256:…`) so a pull never changes what
+runs without you changing the file. Release notes are in
+[CHANGELOG.md](../CHANGELOG.md); read them before moving across a minor version.

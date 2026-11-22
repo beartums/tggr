@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Groups list only the Quality checks they ignore.** Every check applies to a
+  group until you add it under **+ Ignore a Quality check**; ✕ applies it
+  again. Before, each group showed every check to switch off.
+- **Fix: Quality counted albums by folder** while the album list counts folder +
+  album name, so a folder whose tracks carry several album names (a
+  compilation tagged inconsistently) showed fewer albums in the sidebar than in
+  the pager (e.g. 462 vs 528 for Missing lyrics). Both now count the same way.
+- **Docs:** README features and the self-hosting guide brought up to date
+  (groups, Clean up, CD rip tags, Backup/restore, updating and pinning).
 - **The album view shows what's staged**: an album with staged changes is
   outlined in amber with a ✎ count of its staged tracks (tiles), or gets the
   track list's amber bar and "✎ N" by its name (list). A staged folder move

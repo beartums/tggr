@@ -253,3 +253,14 @@ def test_album_views_count_staged_tracks_and_folder_moves(client, lib):
     row = next(a for a in client.get("/api/library/album-list").json() if a["album"] == "Al")
     assert (row["staged"], row["moving"]) == (0, str(lib / "Shared" / "B" / "Al"))
     assert next(a for a in client.get("/api/library/albums").json() if a["album"] == "Al")["staged"] == 2
+
+
+def test_issue_album_count_matches_the_album_list(client, lib):
+    # One folder, two album names (a compilation tagged inconsistently): two albums, as the pager shows.
+    d = lib / "Shared" / "VA" / "Mixed"
+    _insert(d / "01.mp3", album="Almost Christmas", title="")
+    _insert(d / "02.mp3", album="My Christmas", title="")
+    _insert(lib / "Shared" / "Ann" / "Solo" / "01.mp3", album="Solo", title="")
+    issue = client.get("/api/library/issues").json()["missing_title"]
+    rows = client.get("/api/library/album-list", params={"issue": "missing_title"}).json()
+    assert issue["albums"] == len(rows) == 3

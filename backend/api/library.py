@@ -350,17 +350,20 @@ def _dot_counts(r) -> dict[str, int]:
 
 
 def _check(conn, key: str) -> dict:
-    """Run one Quality check: tracks and albums (folders) it finds, stored with the time."""
+    """Run one Quality check: tracks and albums it finds, stored with the time. An album is a
+    folder + album name, as the album list (the pager) counts them: a folder whose tracks carry
+    several album names is several albums."""
     import time
     if key == "missing_files":
-        rows = conn.execute("SELECT path, directory FROM tracks").fetchall()
+        rows = conn.execute("SELECT path, directory, COALESCE(album, '') AS a FROM tracks").fetchall()
         gone = [r for r in rows if not Path(r["path"]).exists()]
-        tracks, albums = len(gone), len({r["directory"] for r in gone})
+        tracks, albums = len(gone), len({(r["directory"], r["a"]) for r in gone})
     else:
         if key.startswith("duplicate_"):
             duplicates.refresh(conn)
         tracks, albums = conn.execute(
-            f"SELECT COUNT(*), COUNT(DISTINCT directory) FROM tracks WHERE {_issue_clause(key)}").fetchone()
+            f"SELECT COUNT(*), COUNT(DISTINCT directory || char(0) || COALESCE(album, '')) FROM tracks"
+            f" WHERE {_issue_clause(key)}").fetchone()
     at = time.time()
     conn.execute("INSERT INTO quality_results (key, tracks, albums, checked_at) VALUES (?, ?, ?, ?)"
                  " ON CONFLICT(key) DO UPDATE SET tracks = excluded.tracks, albums = excluded.albums,"

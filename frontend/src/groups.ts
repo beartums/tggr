@@ -1,5 +1,5 @@
 // Groups: the editor in Settings → Groups (each group's name and optional
-// attributes -- a layout, Quality checks that don't apply) and "Group…" for a
+// attributes -- a layout, Quality checks it ignores) and "Group…" for a
 // selection (a track can be in several). Backend: core/groups.py.
 import { api, Group } from './api'
 import { toast } from './toast'
@@ -17,13 +17,28 @@ function layoutAttr(layout: string): string {
   </div>`
 }
 
+// Every Quality check applies to a group unless it's listed here: only the
+// ignored ones are shown, and "+ Ignore a Quality check" adds one.
+const label = (key: string) => QUALITY_ISSUES.find(q => q.key === key)
+function ignoredChip(key: string): string {
+  const q = label(key)
+  return `<span class="ignored-check" data-quality="${esc(key)}" title="${esc(q?.group ? q.group + ': ' : '')}${esc(q?.label ?? key)}: these tracks are not listed or counted in it">${esc(q?.label ?? key)}<button type="button" class="ignored-check-x" data-unignore aria-label="Apply this check again" title="Apply this check again">✕</button></span>`
+}
 function qualityAttr(off: string[]): string {
   return `<div class="group-attr" data-attr="quality">
-    <div class="group-attr-h">Quality <span class="ma-dim">click a check to leave these tracks out of it (struck: not listed, not counted)</span>
-      <button type="button" class="btn btn-ghost btn-sm btn-icon" data-attr-remove title="Remove: every check applies">✕</button></div>
-    <div class="tog-row">${QUALITY_ISSUES.map(q => `<button type="button" class="tog" data-quality="${q.key}" aria-pressed="${!off.includes(q.key)}" title="${esc(q.group ? q.group + ': ' : '')}${esc(q.label)}: ${off.includes(q.key) ? 'leaves these tracks out' : 'applies'} (click to switch)">${esc(q.label)}</button>`).join('')}</div>
+    <div class="group-attr-h">Ignored Quality checks <span class="ma-dim">these tracks are left out of them (not listed, not counted); every other check applies</span></div>
+    <div class="tog-row">${off.map(ignoredChip).join('')}</div>
   </div>`
 }
+function ignorePicker(off: string[]): string {
+  const left = QUALITY_ISSUES.filter(q => !off.includes(q.key))
+  return `<select class="ignore-pick" data-ignore-pick aria-label="Quality check to ignore">
+    <option value="">Ignore which check?</option>
+    ${left.map(q => `<option value="${esc(q.key)}">${esc(q.group ? q.group + ' · ' : '')}${esc(q.label)}</option>`).join('')}
+  </select>`
+}
+const ignoreBtn = '<button type="button" class="btn btn-link btn-sm" data-attr-add="quality">+ Ignore a Quality check</button>'
+const offOf = (c: HTMLElement) => [...c.querySelectorAll<HTMLElement>('[data-quality]')].map(b => b.dataset.quality!)
 
 function card(g: Group & { tracks?: number }): string {
   const hasLayout = !!g.layout, hasQuality = g.quality_off.length > 0
@@ -34,7 +49,7 @@ function card(g: Group & { tracks?: number }): string {
       <button type="button" class="btn btn-ghost btn-sm" data-group-remove title="Delete this group (its tracks just leave it; nothing changes in the files)">Delete</button>
     </div>
     ${hasLayout ? layoutAttr(g.layout) : ''}${hasQuality ? qualityAttr(g.quality_off) : ''}
-    <div class="group-add-attr">${hasLayout ? '' : '<button type="button" class="btn btn-link btn-sm" data-attr-add="layout">+ Layout</button>'}${hasQuality ? '' : '<button type="button" class="btn btn-link btn-sm" data-attr-add="quality">+ Quality</button>'}</div>
+    <div class="group-add-attr">${hasLayout ? '' : '<button type="button" class="btn btn-link btn-sm" data-attr-add="layout">+ Layout</button>'}${g.quality_off.length < QUALITY_ISSUES.length ? ignoreBtn : ''}</div>
   </div>`
 }
 
@@ -44,6 +59,16 @@ export function renderGroups(el: HTMLElement, groups: (Group & { tracks?: number
 }
 
 export function wireGroups(el: HTMLElement, addBtn: HTMLElement) {
+  el.addEventListener('change', (e) => {
+    const pick = (e.target as HTMLElement).closest<HTMLSelectElement>('[data-ignore-pick]')
+    if (!pick || !pick.value) return
+    const c = pick.closest<HTMLElement>('.group-card')!
+    let a = c.querySelector<HTMLElement>('[data-attr="quality"]')
+    if (!a) { c.querySelector('.group-add-attr')!.insertAdjacentHTML('beforebegin', qualityAttr([])); a = c.querySelector<HTMLElement>('[data-attr="quality"]')! }
+    a.querySelector('.tog-row')!.insertAdjacentHTML('beforeend', ignoredChip(pick.value))
+    pick.insertAdjacentHTML('afterend', offOf(c).length < QUALITY_ISSUES.length ? ignoreBtn : '')
+    pick.remove()
+  })
   addBtn.addEventListener('click', () => {
     el.querySelector('.group-none')?.remove()
     el.insertAdjacentHTML('beforeend', card({ id: '', name: '', layout: '', quality_off: [] }))
@@ -54,20 +79,24 @@ export function wireGroups(el: HTMLElement, addBtn: HTMLElement) {
     const c = t.closest<HTMLElement>('.group-card')
     if (!c) return
     const add = t.closest<HTMLElement>('[data-attr-add]')
-    if (add) {
-      add.insertAdjacentHTML('beforebegin', '')
-      c.querySelector('.group-add-attr')!.insertAdjacentHTML('beforebegin', add.dataset.attrAdd === 'layout' ? layoutAttr('') : qualityAttr([]))
+    if (add?.dataset.attrAdd === 'layout') {
+      c.querySelector('.group-add-attr')!.insertAdjacentHTML('beforebegin', layoutAttr(''))
       add.remove()
       c.querySelector<HTMLInputElement>('[data-layout]')?.focus()
+    } else if (add) {
+      // Which check to ignore: a list of the ones that still apply, in place of the button.
+      add.insertAdjacentHTML('afterend', ignorePicker(offOf(c)))
+      add.remove()
+      c.querySelector<HTMLSelectElement>('[data-ignore-pick]')!.focus()
     } else if (t.closest('[data-attr-remove]')) {
-      const a = t.closest<HTMLElement>('.group-attr')!
-      const kind = a.dataset.attr!
-      a.remove()
-      c.querySelector('.group-add-attr')!.insertAdjacentHTML('beforeend',
-        `<button type="button" class="btn btn-link btn-sm" data-attr-add="${kind}">+ ${kind === 'layout' ? 'Layout' : 'Quality'}</button>`)
-    } else if (t.closest('[data-quality]')) {
-      const b = t.closest<HTMLElement>('[data-quality]')!
-      b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true'))
+      t.closest<HTMLElement>('.group-attr')!.remove()
+      c.querySelector('.group-add-attr')!.insertAdjacentHTML('afterbegin',
+        '<button type="button" class="btn btn-link btn-sm" data-attr-add="layout">+ Layout</button>')
+    } else if (t.closest('[data-unignore]')) {
+      t.closest('[data-quality]')!.remove()
+      const a = c.querySelector<HTMLElement>('[data-attr="quality"]')!
+      if (!a.querySelector('[data-quality]')) a.remove()
+      if (!c.querySelector('[data-attr-add="quality"], [data-ignore-pick]')) c.querySelector('.group-add-attr')!.insertAdjacentHTML('beforeend', ignoreBtn)
     } else if (t.closest('[data-group-remove]')) {
       c.remove()
     }
@@ -81,7 +110,7 @@ export function readGroups(el: HTMLElement): Group[] | null {
     id: c.dataset.id ?? '',
     name: c.querySelector<HTMLInputElement>('.group-name')!.value.trim(),
     layout: c.querySelector<HTMLInputElement>('[data-layout]')?.value.trim() ?? '',
-    quality_off: [...c.querySelectorAll<HTMLElement>('[data-quality][aria-pressed="false"]')].map(b => b.dataset.quality!),
+    quality_off: offOf(c),
   }))
 }
 
