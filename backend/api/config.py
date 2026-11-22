@@ -31,6 +31,9 @@ class AppSettings(BaseModel):
     discogs_token: str = ""
     lrclib_api_key: str = ""           # optional: a registered app's much higher rate limit
     lrclib_app_id: str = ""            # its public id, sent with the key
+    # Tracks LRCLIB had nothing for are skipped by lookups; after this many days
+    # they're "due" again (the Lyrics lookup filter, the retry option). 0 = never.
+    lyrics_retry_days: int = 30
     scan_tags: list[str] = ALL_SCAN_TAGS
     music_dirs: list[str] = []
     scan_exclude: list[str] = []       # glob patterns; matching paths are skipped

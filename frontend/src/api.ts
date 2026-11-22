@@ -166,6 +166,9 @@ export interface AlbumRow {
   quality: Record<string, number>      // per dot check: how many of its tracks fail it
   staged: number                       // tracks with staged changes
   moving: string | null                // where a staged folder move takes it
+  // In a Quality-check view: the whole album, not just the tracks listed.
+  total?: number; passing?: number
+  lookup?: { failing: number; tried: number; last: number | null }   // Missing lyrics: not found so far
 }
 
 export interface RescanResult { at: number; ok: boolean; message: string }
@@ -197,6 +200,7 @@ export interface AppSettings {
   groups: Group[]
   lrclib_api_key: string
   lrclib_app_id: string
+  lyrics_retry_days: number
   cover_target: 'folder' | 'tracks' | 'both'
   cover_embed_size: number
   search_fields: string[]
@@ -678,7 +682,7 @@ export const api = {
     plan: (trackId: number) => request<LyricsPlan>('GET', `/api/lyrics/plan/${trackId}`),
     search: (q: { title?: string; artist?: string; album?: string; q?: string }) =>
       request<{ hits: LyricsHit[] }>('POST', '/api/lyrics/search', q),
-    lookup: (opts: { track_ids?: number[] | null; prefer?: string; retry?: boolean; instrumental_to_none?: boolean }) =>
+    lookup: (opts: { track_ids?: number[] | null; prefer?: string; retry?: boolean; retry_days?: number | null; instrumental_to_none?: boolean }) =>
       request<{ job_id: string | null; tracks: number }>('POST', '/api/lyrics/lookup', opts),
   },
 

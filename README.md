@@ -119,11 +119,14 @@ gives it away, even though its format and bitrate say lossless.
   deletes them.
 - **Lyrics** — synced or plain from LRCLIB, looked up in the background for a
   whole library. Query templates per group handle cast albums and
-  soundtracks, and you can search by hand.
+  soundtracks, and you can search by hand. Each track remembers its last
+  lookup, so albums where everything was tried can be filtered out, and old
+  misses retried after a set number of days.
 - **Quality** — views for missing tags, lyrics, covers and files, oversized
   covers, tracks not in layout, and duplicate tracks (tags + length, or audio
   fingerprint) and albums, with a review that keeps the best copy. Each check
-  can be switched off, and counts tracks and albums the way the album list does.
+  can be switched off, and counts tracks and albums the way the album list does;
+  the album list shows how many of each album's tracks already pass.
   Bitrate/sample-rate columns and a per-file **spectrogram** expose lossy
   transcodes.
 - **Groups** — your own sets of tracks (a track can be in several), for

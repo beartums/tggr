@@ -144,6 +144,7 @@ class Lookup(BaseModel):
     track_ids: list[int] | None = None   # None: every track missing lyrics
     prefer: str = "synced"
     retry: bool = False                   # also tracks already looked up without success
+    retry_days: int | None = None         # ...or only those not found more than this many days ago
     instrumental_to_none: bool = True     # unused: an "instrumental" answer is always remembered (lyricsjob)
 
 
@@ -155,7 +156,7 @@ def start_lookup(req: Lookup, background_tasks: BackgroundTasks):
     if running:
         raise HTTPException(409, {"detail": "A lyrics lookup is already running", "job_id": running["id"]})
     with db() as conn:
-        ids = lyricsjob.targets(conn, req.track_ids, req.retry)
+        ids = lyricsjob.targets(conn, req.track_ids, req.retry, req.retry_days)
     if not ids:
         return {"job_id": None, "tracks": 0}
     job_id = create_scan_job(kind="lyrics")
