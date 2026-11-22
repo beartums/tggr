@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Fix: Not found stayed "not yet" after fetching lyrics.** Only Look up all…
+  remembered tracks LRCLIB had nothing for; **Fetch lyrics…** on a selection
+  now does too (not with a custom query), so the Not found column and the
+  lookup filters count it.
 - **Fix: albums that left the album list stayed selected.** Adding a picked album
   to a group that ignores the check (or fixing it) took it off the list but kept
   its tracks selected out of sight, so the next album you picked carried them
