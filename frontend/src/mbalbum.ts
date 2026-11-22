@@ -65,6 +65,7 @@ export function openMbAlbum(ids: number[], onDone: () => Promise<void>, opts: { 
       </div>
       <div class="fix-confirm-footer">
         <span class="pr-summary" id="mb-summary"></span>
+        <button class="btn btn-ghost" id="mb-missing" title="None of these releases is this album: remember it as not on MusicBrainz (No MusicBrainz album's Not found)">Not on MusicBrainz</button>
         <button class="btn btn-ghost" id="mb-cancel">Cancel</button>
         <button class="btn btn-primary" id="mb-apply" disabled>Stage</button>
       </div>
@@ -116,6 +117,12 @@ export function openMbAlbum(ids: number[], onDone: () => Promise<void>, opts: { 
   overlay.addEventListener('click', e => { if (e.target === overlay) close() })
   $('.fix-confirm-close').addEventListener('click', close)
   $('#mb-cancel').addEventListener('click', close)
+  $('#mb-missing').addEventListener('click', async () => {
+    try { await api.lookup.mbMissing(ids) } catch (e) { toast(`Failed: ${errText(e)}`, 'error'); return }
+    toast(`Marked ${ids.length} track${ids.length !== 1 ? 's' : ''} not on MusicBrainz`, 'info')
+    close()
+    await onDone()
+  })
   const fail = (e: unknown) => { errEl.textContent = errText(e); errEl.hidden = false }
 
   async function search(first = false, by: 'album' | 'artist' | 'track' = 'album') {

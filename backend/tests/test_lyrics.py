@@ -313,3 +313,37 @@ def test_missing_lyrics_view_settings(client, lib):
     assert listed() == {plain, instr}
     assert client.get("/api/library/issues").json()["missing_lyrics"]["tracks"] == 2
     assert client.patch("/api/config", json={"lyrics_view_not_found_before": "soon"}).status_code == 400
+
+
+def test_mb_no_album_not_found_and_view_settings(client, lib, monkeypatch):
+    import datetime
+    import time
+    from core import mblookups
+    from api import lookup
+    d = lib / "Shared" / "Bo" / "Rare"
+    a, b, c = (_insert(d / f"0{i}.mp3", album="Rare", title=f"T{i}", artist="Bo") for i in range(1, 4))
+    monkeypatch.setattr(lookup.mbp, "search_releases", lambda *a, **k: [])
+    monkeypatch.setattr(lookup, "_pinned", lambda *a, **k: _none())
+    assert client.post("/api/lookup/album/search", json={"track_ids": [a]}).json()["candidates"] == []
+    assert client.post("/api/lookup/mb-missing", json={"track_ids": [b]}).json() == {"marked": 1}
+    with db() as conn:
+        assert {r[0] for r in conn.execute("SELECT track_id FROM mb_lookups WHERE status = 'missing'")} == {a, b}
+        conn.execute("UPDATE mb_lookups SET at = ? WHERE track_id = ?", (time.time() - 40 * 86400, a))
+
+    def listed():
+        r = client.get("/api/library/tracks", params={"issue": "mb_no_album", "limit": 50}).json()
+        return {t["id"] for t in r["tracks"]}
+
+    assert listed() == {a, b, c}
+    (row,) = client.get("/api/library/album-list", params={"issue": "mb_no_album"}).json()
+    assert (row["lookup"]["failing"], row["lookup"]["tried"]) == (3, 2)
+    week_ago = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
+    client.patch("/api/config", json={"mb_view_not_found_before": week_ago})
+    assert listed() == {a, c}
+    client.patch("/api/config", json={"mb_view_not_found": False})
+    assert listed() == {c}
+    assert mblookups.not_found_sql()
+
+
+async def _none():
+    return []

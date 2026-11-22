@@ -204,6 +204,8 @@ export interface AppSettings {
   lyrics_view_instrumental: boolean
   lyrics_view_not_found: boolean
   lyrics_view_not_found_before: string
+  mb_view_not_found: boolean
+  mb_view_not_found_before: string
   cover_target: 'folder' | 'tracks' | 'both'
   cover_embed_size: number
   search_fields: string[]
@@ -704,6 +706,8 @@ export const api = {
       request<{ action: string; album: string; fields: [string, string][]; artists: { linked: number; ambiguous: string[]; unknown: string[]; unchecked: string[] } }>('POST', '/api/lookup/mb-seed', { track_ids: trackIds, redirect_uri: redirectUri, artists }),
     discInfo: (trackIds: number[]) =>
       request<DiscInfo>('POST', '/api/lookup/disc-info', { track_ids: trackIds }),
+    mbMissing: (trackIds: number[]) =>
+      request<{ marked: number }>('POST', '/api/lookup/mb-missing', { track_ids: trackIds }),
     albumScore: (trackIds: number[], mbAlbumId: string) =>
       request<{ mb_album_id: string; quality: number; matched: number; local: number; release_tracks: number }>(
         'POST', '/api/lookup/album/score', { track_ids: trackIds, mb_album_id: mbAlbumId }),

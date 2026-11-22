@@ -41,6 +41,9 @@ class AppSettings(BaseModel):
     lyrics_view_instrumental: bool = False
     lyrics_view_not_found: bool = True
     lyrics_view_not_found_before: str = ""
+    # The same for No MusicBrainz album: tracks marked not on MusicBrainz.
+    mb_view_not_found: bool = True
+    mb_view_not_found_before: str = ""
     scan_tags: list[str] = ALL_SCAN_TAGS
     music_dirs: list[str] = []
     scan_exclude: list[str] = []       # glob patterns; matching paths are skipped
@@ -333,11 +336,12 @@ def update_settings(update: AppSettings):
     for k in ("rescan_delay_seconds", "rescan_quiet_minutes"):
         if k in sent and not 1 <= sent[k] <= 1440:
             raise HTTPException(400, f"{k}: 1 to 1440")
-    if sent.get("lyrics_view_not_found_before"):
-        try:
-            datetime.date.fromisoformat(sent["lyrics_view_not_found_before"])
-        except ValueError:
-            raise HTTPException(400, "lyrics_view_not_found_before: a date, YYYY-MM-DD") from None
+    for k in ("lyrics_view_not_found_before", "mb_view_not_found_before"):
+        if sent.get(k):
+            try:
+                datetime.date.fromisoformat(sent[k])
+            except ValueError:
+                raise HTTPException(400, f"{k}: a date, YYYY-MM-DD") from None
     merged = _load().model_copy(update=sent)
     _save(merged)
     if "groups" in sent:              # a deleted group takes its memberships with it
