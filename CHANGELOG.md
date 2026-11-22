@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **Quality album views show how much of each album passes**: a **Passing**
+  column ("12 / 25": tracks in the whole album that pass the check, not just
+  the ones listed). Sort it to bring nearly done albums to the top.
+- **Missing lyrics remembers what was tried, per album**: a **Not found** column
+  ("✓ all Nov 20", or "13 / 25") counts the tracks still missing lyrics that a
+  lookup found nothing for, and when. New filters under **Lyrics lookup**:
+  *Not looked up yet* (hides albums where every track has been tried), *Looked
+  up, not found*, and *Not found N+ days ago*.
+- **Look up all… can retry old misses**: the lookup dialog offers "Also retry
+  tracks not found more than N days ago" (LRCLIB keeps adding lyrics). N is
+  **Settings → Metadata → LRCLIB → Look again after (days)**, 30 by default; 0
+  turns it off.
+- **Fix: Look up all… looked up every track missing lyrics**, not just the ones
+  listed, when a filter narrowed the view. It now looks up exactly the tracks
+  listed (or the selection).
 - **Groups list only the Quality checks they ignore.** Every check applies to a
   group until you add it under **+ Ignore a Quality check**; ✕ applies it
   again. Before, each group showed every check to switch off.

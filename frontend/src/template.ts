@@ -194,6 +194,9 @@ export const APP_HTML = `
           <span class="secret-row"><input id="setting-lrclib-key" data-secret="lrclib_api_key" type="password" autocomplete="off" placeholder="Optional" data-placeholder="Optional" /><button type="button" class="btn btn-ghost btn-sm" data-secret-remove hidden>Remove</button><button type="button" class="btn btn-ghost btn-sm" data-source-test="lrclib" title="Check it with the service (what you typed, else the saved one)">Test</button></span>
         </label>
         <div class="source-test-result" data-test-result="lrclib" hidden></div>
+        <label class="field-label">Look again after (days)
+          <input id="setting-lyrics-retry-days" type="number" min="0" step="1" title="Tracks LRCLIB had nothing for are skipped by lookups. After this many days they're due again: the Lyrics lookup filter “Not found N+ days ago” and the retry option in Look up all… 0 = never." />
+        </label>
       </div>
       </div>
       <div class="settings-sect" data-sect="integrations" hidden>

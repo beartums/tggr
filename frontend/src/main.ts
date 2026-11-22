@@ -33,7 +33,7 @@ import { renderHome } from './home'
 import { openGroupMembership, renderGroups, wireGroups, readGroups } from './groups'
 import { renderBackground, renderAbout, wireBackground } from './background'
 import { wirePathDiff } from './pathdiff'
-import { initFilterBar, filterParams, filtersActive, refreshFormats, refreshGroups, filtersKey, setFiltersFromKey } from './filterbar'
+import { initFilterBar, filterParams, filtersActive, refreshFormats, refreshGroups, filtersKey, setFiltersFromKey, setRetryDays } from './filterbar'
 import { ICON } from './icons'
 import { initGridEdit, gridView, gridCell, gridBeforeRender, gridAfterRender, gridActive, gridCommit, gridConfirmLeave } from './gridedit'
 
@@ -130,6 +130,7 @@ let spectrogramAvailable = false
 let renameOnSave = false
 let renameTemplate = ''
 let stageChanges = true
+let lyricsRetryDays = 30          // Settings → LRCLIB: not-found lookups are due again after this
 const lookupBtn        = document.getElementById('lookup-btn') as HTMLButtonElement
 const lookupPanel      = document.getElementById('lookup-panel')!
 const lookupResults    = document.getElementById('lookup-results')!
@@ -688,7 +689,7 @@ function redrawAlbums() {
 }
 
 // Album list sort: a header click sorts by it, again reverses. Remembered per browser.
-type AlbumSortKey = 'quality' | 'album' | 'artist' | 'tracks' | 'discs' | 'year' | 'genre' | 'format' | 'folder'
+type AlbumSortKey = 'quality' | 'album' | 'artist' | 'tracks' | 'passing' | 'lookup' | 'discs' | 'year' | 'genre' | 'format' | 'folder'
 let albumSort: { key: AlbumSortKey; dir: 1 | -1 } = { key: 'artist', dir: 1 }
 try { const s = JSON.parse(localStorage.getItem('tggr.albumSort') ?? 'null'); if (s?.key) albumSort = s } catch { /* storage blocked */ }
 const RANK = { good: 0, fair: 1, poor: 2 }
@@ -698,6 +699,9 @@ function albumSortValue(r: AlbumRow, k: AlbumSortKey): string | number {
     case 'album':   return r.album.toLowerCase()
     case 'artist':  return (r.album_artist || r.values.artist?.[0] || r.artist || '').toLowerCase()
     case 'tracks':  return r.tracks
+    // nearly done first when descending; every track tried, then the oldest try, last
+    case 'passing': return r.total ? (r.passing ?? 0) / r.total : 0
+    case 'lookup':  return r.lookup ? (r.lookup.failing ? r.lookup.tried / r.lookup.failing : 2) * 1e10 - (r.lookup.last ?? 0) : 0
     case 'discs':   return r.discs
     case 'year':    return r.year ?? ''
     case 'genre':   return (r.genre ?? r.values.genre?.[0] ?? '').toLowerCase()
@@ -742,13 +746,26 @@ function drawAlbumList(fetched: AlbumRow[]) {
     r.staged ? `<span class="al-staged" title="${plural(r.staged, 'track')} with staged changes — Review to write">✎ ${r.staged}</span>` : '',
     r.moving ? `<span class="al-staged" title="Folder will move to ${esc(r.moving)}">→ ${esc(shortPath(r.moving))}</span>` : '',
   ].join('')
+  // Quality-check views: how much of the whole album already passes.
+  const checked = rows.some(r => r.passing != null)
+  const passing = (r: AlbumRow) => r.passing == null ? '' :
+    `<span class="${r.passing === r.total ? 'al-full' : ''}" title="${r.passing} of the album's ${r.total} tracks pass this check; ${r.tracks} listed">${r.passing} / ${r.total}</span>`
+  // Missing lyrics: of the tracks still missing them, how many LRCLIB had nothing for.
+  const lookedUp = rows.some(r => r.lookup)
+  const day = (t: number) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+  const lookup = (r: AlbumRow) => {
+    const l = r.lookup
+    if (!l || !l.failing || !l.tried) return l?.failing ? '<span class="al-dim">not yet</span>' : ''
+    const all = l.tried === l.failing
+    return `<span class="${all ? 'al-tried-all' : ''}" title="${l.tried} of ${l.failing} tracks missing lyrics were looked up with nothing found${l.last ? `, last ${esc(day(l.last))}` : ''}${all ? ' — every one tried' : ''}">${all ? '✓ all' : `${l.tried} / ${l.failing}`}${l.last ? ` <span class="al-dim">${esc(day(l.last))}</span>` : ''}</span>`
+  }
   const dot = (r: AlbumRow) => { const q = albumQuality(r.quality ?? {}, r.tracks); return `<span class="quality-dot quality-dot-${q.rating}" title="${esc(q.title)}"></span>` }
   albumListEl.innerHTML = `<table class="track-table album-table"><thead><tr>
-      ${th('quality', '', 'al-q', 'Quality: the worst track decides. Click to sort')}<th class="col-check"><input type="checkbox" id="album-select-all" title="Select every album on this page" /></th><th class="al-cover"><span class="col-resizer" data-al-cover-resize title="Drag to resize the covers · double-click to reset"></span></th>${th('album', 'Album')}${th('artist', 'Artist', '', 'Album artist, or the track artists when there is none')}${th('tracks', 'Tracks', 'al-num')}${th('discs', 'Discs', 'al-num')}
+      ${th('quality', '', 'al-q', 'Quality: the worst track decides. Click to sort')}<th class="col-check"><input type="checkbox" id="album-select-all" title="Select every album on this page" /></th><th class="al-cover"><span class="col-resizer" data-al-cover-resize title="Drag to resize the covers · double-click to reset"></span></th>${th('album', 'Album')}${th('artist', 'Artist', '', 'Album artist, or the track artists when there is none')}${th('tracks', 'Tracks', 'al-num')}${checked ? th('passing', 'Passing', 'al-num', 'Tracks in the whole album that pass this check. Click to sort') : ''}${lookedUp ? th('lookup', 'Not found', '', 'Tracks missing lyrics that a lookup found nothing for, and when. Click to sort') : ''}${th('discs', 'Discs', 'al-num')}
       ${th('year', 'Year')}${th('genre', 'Genre')}${th('format', 'Format')}${th('folder', 'Folder')}</tr></thead><tbody>
     ${rows.map((r, i) => ({ r, i })).slice(albumPage.offset, albumPage.offset + state.pageSize).map(({ r, i }) => `<tr data-i="${i}" data-album-key="${esc(listKey(r))}" class="${albumPicks.has(listKey(r)) ? 'album-picked' : ''}${r.staged || r.moving ? ' row-staged' : ''}" title="${esc(r.directory)}\nClick to open · the box (or Ctrl/⌘-click) selects, Shift-click a range">
       <td class="al-q">${dot(r)}</td><td class="col-check">${r.ids.length ? `<input type="checkbox" class="album-check" ${albumPicks.has(listKey(r)) ? 'checked' : ''} aria-label="Select this album" />` : '<span class="ro-lock" title="Read-only">🔒</span>'}</td><td class="al-cover"><img loading="lazy" src="${coverUrl(r.cover_track_id)}" alt="" onerror="this.style.visibility='hidden'" /></td>
-      <td>${esc(r.album || '(no album)')}${stagedMark(r)}</td><td>${artist(r)}</td><td class="al-num">${tracks(r)}</td>
+      <td>${esc(r.album || '(no album)')}${stagedMark(r)}</td><td>${artist(r)}</td><td class="al-num">${tracks(r)}</td>${checked ? `<td class="al-num">${passing(r)}</td>` : ''}${lookedUp ? `<td>${lookup(r)}</td>` : ''}
       <td class="al-num">${r.discs > 1 ? r.discs : ''}</td><td>${v(r, 'year')}</td><td>${v(r, 'genre')}</td>
       <td>${v(r, 'format')}${r.bitrate ? ` <span class="al-dim">${Math.round(r.bitrate / 1000)}k</span>` : ''}</td>
       <td class="al-dim">${esc(shortPath(r.directory))}</td></tr>`).join('')}
@@ -2142,22 +2159,51 @@ dedupeBtn.addEventListener('click', () => openDuplicates(async () => {
 // "Missing lyrics" view: look up the selection, or every track listed, in the
 // background (Settings → Background); what's found is staged for review.
 lyricsLookupBtn.addEventListener('click', async () => {
-  const ids = state.selectedIds.size ? [...state.selectedIds] : null
-  const what = ids ? `the ${ids.length} selected track${ids.length !== 1 ? 's' : ''}` : 'every track missing lyrics'
-  if (!confirm(`Look up lyrics for ${what} in the background?\n\nEach track goes through its lyrics group's queries. Found lyrics are ${stageChanges ? 'staged for Review' : 'written'}; tracks LRCLIB calls instrumental move to No lyrics; tracks already not found are skipped.`)) return
-  lyricsLookupBtn.disabled = true
-  try {
-    const r = await api.lyrics.lookup({ track_ids: ids })
-    if (!r.job_id) { toast('Nothing to look up — every track listed was already tried (Search… one by hand)', 'info'); return }
-    toast(`Looking up lyrics for ${r.tracks.toLocaleString()} tracks — progress under Settings → Background`, 'info')
-    pollLyrics(r.job_id)
-    watchJobs()
-  } catch (e) {
-    toast(`Lyrics lookup failed: ${errText(e)}`, 'error')
-  } finally {
-    lyricsLookupBtn.disabled = false
-  }
+  // The selection, else exactly the tracks listed (filters included).
+  let ids: number[]
+  try { ids = state.selectedIds.size ? [...state.selectedIds] : (await api.library.trackIds(viewParams())).ids }
+  catch (e) { toast(`Lyrics lookup failed: ${errText(e)}`, 'error'); return }
+  const what = `${state.selectedIds.size ? 'the selected' : 'the listed'} ${plural(ids.length, 'track')}`
+  const overlay = document.createElement('div')
+  overlay.className = 'modal-overlay'
+  overlay.innerHTML = `
+    <div class="modal-card">
+      <div class="modal-title">Look up lyrics</div>
+      <div>Look up ${esc(what)} in the background. Each track goes through its lyrics group's queries. Found lyrics are ${stageChanges ? 'staged for Review' : 'written'}; tracks LRCLIB calls instrumental move to No lyrics.</div>
+      <div class="al-dim">Tracks already looked up with nothing found are skipped.</div>
+      ${lyricsRetryDays > 0 ? `<label class="lookup-retry"><input type="checkbox" id="lk-retry" /> <span>Also retry tracks not found more than ${lyricsRetryDays} days ago</span></label>` : ''}
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="lk-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="lk-go">Look up</button>
+      </div>
+    </div>`
+  document.body.appendChild(overlay)
+  const close = () => overlay.remove()
+  overlay.addEventListener('click', e => { if (e.target === overlay) close() })
+  overlay.querySelector('#lk-cancel')!.addEventListener('click', close)
+  overlay.querySelector('#lk-go')!.addEventListener('click', async () => {
+    const retry = overlay.querySelector<HTMLInputElement>('#lk-retry')?.checked
+    close()
+    lyricsLookupBtn.disabled = true
+    try {
+      const r = await api.lyrics.lookup({ track_ids: ids, retry_days: retry ? lyricsRetryDays : null })
+      if (!r.job_id) { toast('Nothing to look up — every track listed was already tried (Search… one by hand)', 'info'); return }
+      toast(`Looking up lyrics for ${r.tracks.toLocaleString()} tracks — progress under Settings → Background`, 'info')
+      pollLyrics(r.job_id)
+      watchJobs()
+    } catch (e) {
+      toast(`Lyrics lookup failed: ${errText(e)}`, 'error')
+    } finally {
+      lyricsLookupBtn.disabled = false
+    }
+  })
+  overlay.querySelector<HTMLButtonElement>('#lk-go')!.focus()
 })
+
+function applyRetryDays(days: number | undefined) {
+  lyricsRetryDays = days ?? 30
+  setRetryDays(lyricsRetryDays)
+}
 
 function pollLyrics(jobId: string) {
   const timer = setInterval(async () => {
@@ -3927,6 +3973,7 @@ const settingsModal     = document.getElementById('settings-sidebar')!
 // Keys and tokens: the server says only which are set (never the values).
 // A field is sent when typed into (replace) or removed; otherwise left alone.
 const lrclibAppIdInput = document.getElementById('setting-lrclib-app-id') as HTMLInputElement
+const lyricsRetryDaysInput = document.getElementById('setting-lyrics-retry-days') as HTMLInputElement
 const secretInputs = [...document.querySelectorAll<HTMLInputElement>('[data-secret]')]
 function showSecrets(s: AppSettings) {
   for (const i of secretInputs) {
@@ -4299,6 +4346,7 @@ async function openSettings() {
     ])
     showSecrets(s)
     lrclibAppIdInput.value    = s.lrclib_app_id ?? ''
+    lyricsRetryDaysInput.value = String(s.lyrics_retry_days ?? 30)
     scanExcludeInput.value    = (s.scan_exclude ?? []).join('\n')
     autoScanInput.value       = String(s.auto_scan_minutes ?? 0)
     renameOnSaveInput.checked = s.rename_on_save
@@ -4575,6 +4623,7 @@ function collectSettings(): Partial<AppSettings> {
   const update: Partial<AppSettings> = {
     ...readSecrets(),
     lrclib_app_id:     lrclibAppIdInput.value.trim(),
+    lyrics_retry_days: Math.max(0, Math.round(Number(lyricsRetryDaysInput.value) || 0)),
     rename_on_save:    renameOnSaveInput.checked,
     stage_changes:     stageChangesInput.checked,
     cover_target:      coverTargetInput.value as AppSettings['cover_target'],
@@ -4645,6 +4694,7 @@ document.getElementById('settings-save')!.addEventListener('click', async () => 
     renameOnSave = saved.rename_on_save
     renameTemplate = saved.rename_template
     stageChanges = saved.stage_changes ?? true
+    applyRetryDays(saved.lyrics_retry_days)
     setQualityOff(saved.quality_off)
     renderTracks()
     state.qualityIssues = null   // layouts / lyrics groups may have changed the Quality counts
@@ -4999,6 +5049,7 @@ async function startApp() {
     renameOnSave = s.rename_on_save
     renameTemplate = s.rename_template
     stageChanges = s.stage_changes ?? true
+    applyRetryDays(s.lyrics_retry_days)
     setQualityOff(s.quality_off)
     if (state.tracks.length) renderTracks()   // the dots skip checks turned off
   }).catch(() => {})

@@ -232,7 +232,20 @@ class SelectionIds(BaseModel):
 _HAS = {
     "lyrics": f"NOT {_blank('lyrics')}",
     "staged": "id IN (SELECT track_id FROM staged)",
+    # Lyrics lookups (core/lyricsjob.py): never tried (or it errored), tried and
+    # nothing found, and nothing found long enough ago to be worth another try.
+    "lookup_none": f"NOT {lyricsjob.not_found_sql()}",
+    "lookup_missed": lyricsjob.not_found_sql(),
+    "lookup_due": "",                  # from Settings: _has_clause()
 }
+
+
+def _has_clause(key: str) -> str:
+    if key != "lookup_due":
+        return _HAS[key]
+    from api.config import _load
+    cutoff = lyricsjob.retry_cutoff(_load().lyrics_retry_days)
+    return lyricsjob.not_found_sql(cutoff) if cutoff is not None else "0"
 
 
 def _track_filters(v: View) -> tuple[str, list, str]:
@@ -298,7 +311,7 @@ def _track_filters(v: View) -> tuple[str, list, str]:
             with db() as conn:
                 duplicates.refresh(conn)
         clauses.append(_issue_clause(key))
-    clauses += [_HAS[k] for k in v.has]
+    clauses += [_has_clause(k) for k in v.has]
     formats = [f for f in (v.format or "").split(",") if f]
     if formats:
         clauses.append(f"format IN ({', '.join('?' * len(formats))})")
@@ -940,6 +953,34 @@ def _total(v) -> int | None:
     return int(parts[1]) if len(parts) == 2 and parts[1].strip().isdigit() else None
 
 
+def _album_checks(conn, view: "View", dirs: set[str]) -> dict[tuple, dict]:
+    """
+    In a Quality-check view, each album's whole count, not just the tracks
+    listed: `total` tracks and how many are `passing` the check(s). Missing
+    lyrics adds `lookup`: of the failing tracks, how many were looked up with
+    nothing found (`tried`) and when last (`last`).
+    """
+    keys = [k for k in dict.fromkeys(([view.issue] if view.issue in _ISSUE_CLAUSES else []) + view.issues)]
+    if not keys or not dirs:
+        return {}
+    failing = " AND ".join(_issue_clause(k) for k in keys)
+    lyrics = "missing_lyrics" in keys
+    nf = lyricsjob.not_found_sql()
+    extra = (f", SUM(({failing}) AND {nf}) AS tried,"
+             f" MAX(CASE WHEN ({failing}) AND {nf} THEN l.at END) AS last") if lyrics else ""
+    out = {}
+    for r in conn.execute(
+            f"SELECT directory, COALESCE(album, '') AS a, COUNT(*) AS total, SUM({failing}) AS failing{extra}"
+            f" FROM tracks LEFT JOIN lyrics_lookups l ON l.track_id = tracks.id"
+            f" WHERE directory IN (SELECT value FROM json_each(?)) GROUP BY directory, COALESCE(album, '')",
+            [json.dumps(sorted(dirs))]):
+        d = {"total": r["total"], "passing": r["total"] - (r["failing"] or 0)}
+        if lyrics:
+            d["lookup"] = {"failing": r["failing"] or 0, "tried": r["tried"] or 0, "last": r["last"]}
+        out[(r["directory"], r["a"])] = d
+    return out
+
+
 @router.get("/album-list")
 def album_list(view: View = Depends()):
     """
@@ -958,6 +999,7 @@ def album_list(view: View = Depends()):
             f" GROUP BY directory, COALESCE(album, '')", params)}
         staged = {r[0] for r in conn.execute("SELECT track_id FROM staged")}
         moves = staging.load_dirs(conn)
+        checks = _album_checks(conn, view, {r["directory"] for r in rows})
     groups: dict[tuple, list] = {}
     for r in rows:
         groups.setdefault((r["directory"], r["album"] or ""), []).append(r)
@@ -971,6 +1013,7 @@ def album_list(view: View = Depends()):
                      "moving": (staging.moved_path(directory + "/", moves) or "").rstrip("/") or None,
                      # for multi-select; none when read-only (never bulk-selected)
                      "ids": [t["id"] for t in tracks] if os.access(directory, os.W_OK) else []}
+        row.update(checks.get((directory, album), {}))
         for f in fields:
             counts: dict[str, int] = {}
             for t in tracks:

@@ -28,10 +28,27 @@ MISSING = ("(lyrics IS NULL OR trim(lyrics) = '') AND tracks.id NOT IN "
            "(SELECT track_id FROM lyrics_lookups WHERE status = 'instrumental')")
 
 
-def targets(conn, ids: list[int] | None, retry: bool) -> list[int]:
+# Last lookup found nothing for a track still missing lyrics (untagged: no
+# title/artist to ask with). "error" isn't here: the next run tries again.
+NOT_FOUND = ("missing", "untagged")
+
+
+def not_found_sql(before: float | None = None) -> str:
+    """Tracks whose last lookup found nothing (before a time, if given)."""
+    when = f" AND at < {float(before)}" if before is not None else ""
+    return (f"tracks.id IN (SELECT track_id FROM lyrics_lookups WHERE status IN "
+            f"({', '.join(repr(s) for s in NOT_FOUND)}){when})")
+
+
+def retry_cutoff(days: int | None) -> float | None:
+    """Not-found lookups older than this are due again; None: never."""
+    return time.time() - days * 86400 if days and days > 0 else None
+
+
+def targets(conn, ids: list[int] | None, retry: bool, retry_days: int | None = None) -> list[int]:
     """The tracks a run looks up: no lyrics or only plain ones (written or
     staged), not skipped, and -- unless retry -- not already looked up without
-    success."""
+    success (or, with retry_days, not within that many days)."""
     from core.groups import excluded_sql
     off = excluded_sql("missing_lyrics")
     if ids is None:
@@ -41,6 +58,7 @@ def targets(conn, ids: list[int] | None, retry: bool) -> list[int]:
     rows = {r["id"]: r for r in _rows(conn, ids)}
     entries = staging.load(conn, list(rows))
     done = {} if retry else lyricsgroups.lookups(conn, list(rows))
+    cutoff = retry_cutoff(retry_days)
     out = []
     for i in ids:
         r = rows.get(i)
@@ -49,8 +67,11 @@ def targets(conn, ids: list[int] | None, retry: bool) -> list[int]:
         # Plain lyrics can still get synced ones; synced is done.
         if lyricsgroups.kind(staging.effective(r, entries.get(i)).get("lyrics")) == "synced":
             continue
-        if done.get(i, {}).get("status") in ("missing", "instrumental", "untagged", "has_plain"):
-            continue
+        last = done.get(i, {})
+        if last.get("status") in ("missing", "instrumental", "untagged", "has_plain"):
+            due = cutoff is not None and last["status"] in NOT_FOUND and last["at"] < cutoff
+            if not due:
+                continue
         out.append(i)
     return out
 

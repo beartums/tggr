@@ -12,6 +12,7 @@ type Item = { kind: Kind; key: string; label: string; icon: string; group: strin
 const GROUP_ICON: Record<string, string> = {
   Tags: ICON.tag, Files: ICON.file, 'Cover art': ICON.image, MusicBrainz: ICON.brain,
   'CD rips': ICON.album, Quality: ICON.star, Format: ICON.file, Has: ICON.check, Groups: ICON.group,
+  'Lyrics lookup': ICON.match,
 }
 // Quality checks without a group: the tag ones, then the file ones.
 const FILE_CHECKS = new Set(['duplicate_tracks', 'duplicate_albums', 'not_in_layout', 'group_layout_conflict', 'missing_lyrics'])
@@ -19,6 +20,10 @@ const FILE_CHECKS = new Set(['duplicate_tracks', 'duplicate_albums', 'not_in_lay
 let formats: string[] = []
 let groups: { id: string; name: string }[] = []
 let onChange = () => {}
+let retryDays = 30
+
+/** Settings → LRCLIB: when a not-found lookup is due again (names the filter). */
+export function setRetryDays(days: number) { retryDays = days; if (document.getElementById('filter-chips')) renderChips() }
 
 function items(): Item[] {
   const out: Item[] = []
@@ -32,6 +37,9 @@ function items(): Item[] {
   for (const f of formats) out.push({ kind: 'formats', key: f, label: f, icon: ICON.file, group: 'Format' })
   out.push({ kind: 'has', key: 'lyrics', label: 'Has lyrics', icon: ICON.check, group: 'Has' })
   out.push({ kind: 'has', key: 'staged', label: 'Has staged changes', icon: ICON.check, group: 'Has' })
+  for (const [key, label] of [['lookup_none', 'Not looked up yet'], ['lookup_missed', 'Looked up, not found'],
+    ...(retryDays > 0 ? [['lookup_due', `Not found ${retryDays}+ days ago`]] : [])])
+    out.push({ kind: 'has', key, label, icon: ICON.match, group: 'Lyrics lookup' })
   for (const g of groups) out.push({ kind: 'groups', key: g.id, label: g.name, icon: ICON.group, group: 'Groups' })
   return out
 }
@@ -80,7 +88,7 @@ function renderMenu() {
   const groups = new Map<string, Item[]>()
   for (const it of items()) groups.set(it.group, [...(groups.get(it.group) ?? []), it])
   // Three columns: tag and file checks | cover art, MusicBrainz, CD rips | the rest.
-  const cols = [['Tags', 'Files'], ['Cover art', 'MusicBrainz', 'CD rips'], ['Quality', 'Format', 'Has', 'Groups']]
+  const cols = [['Tags', 'Files'], ['Cover art', 'MusicBrainz', 'CD rips'], ['Quality', 'Format', 'Has', 'Lyrics lookup', 'Groups']]
   menuEl().innerHTML = cols.map(names => `<div class="fm-col">${names.filter(n => groups.has(n)).map(n =>
     `<div class="fm-h">${GROUP_ICON[n]}${esc(n)}</div>` + groups.get(n)!.map(it =>
       `<button type="button" class="fm-i" role="menuitemcheckbox" aria-checked="${isOn(it)}" data-kind="${it.kind}" data-key="${esc(it.key)}">${esc(it.label)}</button>`).join('')

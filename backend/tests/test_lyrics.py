@@ -1,5 +1,6 @@
 """Lyrics from LRCLIB: per-track status, prefer synced, skip existing, stage as one step."""
 from core import lyrics as lrclib
+from core.database import db
 from tests.test_staging import _insert, lib  # noqa: F401  (fixture)
 
 SYNCED = "[00:12.00] Here comes old flat top"
@@ -252,3 +253,31 @@ def test_group_views_and_filter(client, lib):
     assert ids("group=cast") == [a] and ids("group=*") == [a, b] and ids("group=-") == [c]
     assert ids("in_groups=cast,live") == [a, b] and ids("group=live&in_groups=cast") == [a]
     assert client.get("/api/groups/summary").json() == {"any": 2, "none": 1}
+
+
+def test_album_list_counts_passing_and_not_found_lookups(client, lib):
+    import time
+    from core import lyricsgroups, lyricsjob
+    d = lib / "Shared" / "Ann" / "Al"
+    ids = [_insert(d / f"0{i}.mp3", album="Al", title=f"T{i}", artist="Ann") for i in range(1, 5)]
+    with db() as conn:
+        conn.execute("UPDATE tracks SET lyrics = 'la' WHERE id = ?", (ids[0],))
+        lyricsgroups.record(conn, ids[1], "missing", time.time() - 40 * 86400)   # due again
+        lyricsgroups.record(conn, ids[2], "missing", time.time())                # recent
+        lyricsgroups.record(conn, ids[3], "error", time.time())                  # not "tried"
+    (row,) = client.get("/api/library/album-list", params={"issue": "missing_lyrics"}).json()
+    assert (row["tracks"], row["total"], row["passing"]) == (3, 4, 1)
+    assert (row["lookup"]["failing"], row["lookup"]["tried"]) == (3, 2) and row["lookup"]["last"] > time.time() - 60
+    # No check, no counts.
+    assert "passing" not in client.get("/api/library/album-list").json()[0]
+
+    view = lambda has: {t["id"] for t in client.get("/api/library/tracks", params={
+        "issue": "missing_lyrics", "has": has, "limit": 50}).json()["tracks"]}
+    assert view("lookup_none") == {ids[3]}
+    assert view("lookup_missed") == {ids[1], ids[2]}
+    assert view("lookup_due") == {ids[1]}
+
+    with db() as conn:
+        assert set(lyricsjob.targets(conn, None, False)) == {ids[3]}
+        assert set(lyricsjob.targets(conn, None, False, retry_days=30)) == {ids[1], ids[3]}
+        assert set(lyricsjob.targets(conn, None, True)) == {ids[1], ids[2], ids[3]}

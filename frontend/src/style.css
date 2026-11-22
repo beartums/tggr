@@ -1481,6 +1481,9 @@ button.scan-status[hidden] { display: none; }
 .al-short { color: #eab308; font-weight: 600; }
 .al-over { color: var(--danger); font-weight: 600; }
 .al-full { color: var(--success); }
+.al-tried-all { color: var(--text-muted); }
+.lookup-retry { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+.lookup-retry input { margin-top: 3px; }
 
 /* ── Lyrics groups, search ─────────────────────────────────────────────── */
 .lyrics-group { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; margin-bottom: 6px; }
