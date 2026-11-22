@@ -201,6 +201,9 @@ export interface AppSettings {
   lrclib_api_key: string
   lrclib_app_id: string
   lyrics_retry_days: number
+  lyrics_view_instrumental: boolean
+  lyrics_view_not_found: boolean
+  lyrics_view_not_found_before: string
   cover_target: 'folder' | 'tracks' | 'both'
   cover_embed_size: number
   search_fields: string[]

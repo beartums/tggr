@@ -448,11 +448,67 @@ async function renderQualityPanel() {
       <button type="button" class="q-switch" data-q-switch aria-pressed="${!off}" title="${off ? 'Off: not run with the panel (it\'s slow on a big library). Click to turn it on' : 'On: run each time the panel opens or the library changes. Click to turn it off'}" aria-label="${esc(issue.label)} on"></button>
       <span class="quality-issue-dot${issue.warn ? ' quality-issue-dot-warn' : ''}"></span>
       <span class="nav-label">${issue.label}</span>
+      ${VIEW_SETTINGS.has(issue.key) ? `<button type="button" class="q-gear" data-q-gear title="What this view counts" aria-label="${esc(issue.label)} settings">${ICON.gear}</button>` : ''}
       ${off ? '<button type="button" class="q-run" data-q-run title="Check it now and keep the count">↻</button>' : ''}
       <span class="nav-count">${count == null ? '–' : count}</span>
     `
     qualityListEl.appendChild(li)
   }
+}
+
+/** Quality views with their own settings (the ⚙ after the name): key → its dialog. */
+const VIEW_SETTINGS = new Map<string, () => void>([['missing_lyrics', () => void openLyricsViewSettings()]])
+
+/** What Missing lyrics counts: instrumental tracks, and not-found ones (all, or tried before a day). */
+async function openLyricsViewSettings() {
+  let s: AppSettings
+  try { s = await api.settings.get() } catch (e) { toast(`Failed: ${errText(e)}`, 'error'); return }
+  let instr = s.lyrics_view_instrumental, nf = s.lyrics_view_not_found
+  const overlay = document.createElement('div')
+  overlay.className = 'modal-overlay'
+  overlay.innerHTML = `
+    <div class="modal-card view-settings">
+      <div class="modal-title">Missing lyrics: what it counts</div>
+      <div class="vs-row"><button type="button" class="q-switch" id="vs-instr"></button>
+        <span>Instrumental tracks <span class="al-dim">(LRCLIB said instrumental)</span></span></div>
+      <div class="vs-row"><button type="button" class="q-switch" id="vs-nf"></button>
+        <span>Not found <span class="al-dim">(looked up, LRCLIB had nothing)</span></span></div>
+      <div class="vs-row vs-sub" id="vs-before-row"><span>only if last tried before</span>
+        <input type="date" id="vs-before" value="${esc(s.lyrics_view_not_found_before)}" />
+        <button type="button" class="btn btn-link btn-sm" id="vs-before-clear" title="Count every not-found track">any time</button></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="vs-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="vs-save">Save</button>
+      </div>
+    </div>`
+  document.body.appendChild(overlay)
+  const q = <T extends HTMLElement>(sel: string) => overlay.querySelector<T>(sel)!
+  const before = q<HTMLInputElement>('#vs-before')
+  const paint = () => {
+    q('#vs-instr').setAttribute('aria-pressed', String(instr))
+    q('#vs-instr').title = instr ? 'Counted: click to leave instrumental tracks out' : 'Left out: click to count instrumental tracks'
+    q('#vs-nf').setAttribute('aria-pressed', String(nf))
+    q('#vs-nf').title = nf ? 'Counted: click to leave not-found tracks out' : 'Left out: click to count not-found tracks'
+    q('#vs-before-row').classList.toggle('vs-disabled', !nf)
+    before.disabled = !nf
+  }
+  paint()
+  q('#vs-instr').addEventListener('click', () => { instr = !instr; paint() })
+  q('#vs-nf').addEventListener('click', () => { nf = !nf; paint() })
+  q('#vs-before-clear').addEventListener('click', () => { before.value = '' })
+  const close = () => overlay.remove()
+  overlay.addEventListener('click', e => { if (e.target === overlay) close() })
+  q('#vs-cancel').addEventListener('click', close)
+  q('#vs-save').addEventListener('click', async () => {
+    try {
+      await api.settings.update({ lyrics_view_instrumental: instr, lyrics_view_not_found: nf, lyrics_view_not_found_before: before.value })
+    } catch (e) { toast(`Failed: ${errText(e)}`, 'error'); return }
+    close()
+    state.qualityIssues = null
+    state.offset = 0
+    await renderQualityPanel()
+    if (state.selectedIssue === 'missing_lyrics') await loadTracks()
+  })
 }
 
 /** Turn a check on or off for the panel (and the list's quality dots); saved at once. */
@@ -3883,6 +3939,7 @@ qualityListEl.addEventListener('click', async (e) => {
   const li = (e.target as HTMLElement).closest<HTMLElement>('.quality-issue-item')
   if (!li?.dataset.issue) return
   const issue = li.dataset.issue
+  if ((e.target as HTMLElement).closest('[data-q-gear]')) { VIEW_SETTINGS.get(issue)?.(); return }
   const sw = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-q-switch]')
   if (sw) { sw.disabled = true; await setQualityCheck(issue as IssueKey, sw.getAttribute('aria-pressed') !== 'true'); return }
   const run = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-q-run]')

@@ -286,3 +286,30 @@ def test_album_list_counts_passing_and_not_found_lookups(client, lib):
         assert set(lyricsjob.targets(conn, None, False)) == {ids[3]}
         assert set(lyricsjob.targets(conn, None, False, retry_days=30)) == {ids[1], ids[3]}
         assert set(lyricsjob.targets(conn, None, True)) == {ids[1], ids[2], ids[3]}
+
+
+def test_missing_lyrics_view_settings(client, lib):
+    import datetime
+    import time
+    from core import lyricsgroups
+    d = lib / "Shared" / "Ann" / "View"
+    plain, instr, old, new = (_insert(d / f"0{i}.mp3", album="View", title=f"T{i}", artist="Ann") for i in range(1, 5))
+    with db() as conn:
+        lyricsgroups.record(conn, instr, "instrumental", time.time())
+        lyricsgroups.record(conn, old, "missing", time.time() - 40 * 86400)
+        lyricsgroups.record(conn, new, "missing", time.time())
+
+    def listed():
+        r = client.get("/api/library/tracks", params={"issue": "missing_lyrics", "limit": 50}).json()
+        return {t["id"] for t in r["tracks"]}
+
+    assert listed() == {plain, old, new}                                  # defaults: as before
+    client.patch("/api/config", json={"lyrics_view_instrumental": True})
+    assert listed() == {plain, instr, old, new}
+    week_ago = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
+    client.patch("/api/config", json={"lyrics_view_not_found_before": week_ago})
+    assert listed() == {plain, instr, old}                                # not found this week: hidden
+    client.patch("/api/config", json={"lyrics_view_not_found": False})
+    assert listed() == {plain, instr}
+    assert client.get("/api/library/issues").json()["missing_lyrics"]["tracks"] == 2
+    assert client.patch("/api/config", json={"lyrics_view_not_found_before": "soon"}).status_code == 400

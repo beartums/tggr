@@ -33,6 +33,21 @@ MISSING = ("(lyrics IS NULL OR trim(lyrics) = '') AND tracks.id NOT IN "
 NOT_FOUND = ("missing", "untagged")
 
 
+def missing_sql(instrumental: bool = False, not_found: bool = True, before: float | None = None) -> str:
+    """The Missing lyrics check as its view settings shape it (api/config.py lyrics_view_*):
+    instrumental tracks in or out; not-found tracks in, out, or only those last tried before `before`."""
+    sql = "(lyrics IS NULL OR trim(lyrics) = '')"
+    if not instrumental:
+        sql += " AND tracks.id NOT IN (SELECT track_id FROM lyrics_lookups WHERE status = 'instrumental')"
+    statuses = ", ".join(repr(s) for s in NOT_FOUND)
+    if not not_found:
+        sql += f" AND tracks.id NOT IN (SELECT track_id FROM lyrics_lookups WHERE status IN ({statuses}))"
+    elif before is not None:
+        sql += (f" AND tracks.id NOT IN (SELECT track_id FROM lyrics_lookups WHERE status IN ({statuses})"
+                f" AND at >= {float(before)})")
+    return f"({sql})"
+
+
 def not_found_sql(before: float | None = None) -> str:
     """Tracks whose last lookup found nothing (before a time, if given)."""
     when = f" AND at < {float(before)}" if before is not None else ""

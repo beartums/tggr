@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import json
 import os
 from pathlib import Path
@@ -34,6 +35,12 @@ class AppSettings(BaseModel):
     # Tracks LRCLIB had nothing for are skipped by lookups; after this many days
     # they're "due" again (the Lyrics lookup filter, the retry option). 0 = never.
     lyrics_retry_days: int = 30
+    # What the Missing lyrics check counts (its ⚙ in the Quality panel): tracks
+    # LRCLIB calls instrumental, and tracks it had nothing for -- all of them,
+    # or ("YYYY-MM-DD") only those last tried before that day.
+    lyrics_view_instrumental: bool = False
+    lyrics_view_not_found: bool = True
+    lyrics_view_not_found_before: str = ""
     scan_tags: list[str] = ALL_SCAN_TAGS
     music_dirs: list[str] = []
     scan_exclude: list[str] = []       # glob patterns; matching paths are skipped
@@ -326,6 +333,11 @@ def update_settings(update: AppSettings):
     for k in ("rescan_delay_seconds", "rescan_quiet_minutes"):
         if k in sent and not 1 <= sent[k] <= 1440:
             raise HTTPException(400, f"{k}: 1 to 1440")
+    if sent.get("lyrics_view_not_found_before"):
+        try:
+            datetime.date.fromisoformat(sent["lyrics_view_not_found_before"])
+        except ValueError:
+            raise HTTPException(400, "lyrics_view_not_found_before: a date, YYYY-MM-DD") from None
     merged = _load().model_copy(update=sent)
     _save(merged)
     if "groups" in sent:              # a deleted group takes its memberships with it

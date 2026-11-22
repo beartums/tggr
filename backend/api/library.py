@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime
+
 import json
 import uuid
 from collections import OrderedDict
@@ -74,10 +76,14 @@ def _issue_clause(key: str, gs: list[dict] | None = None) -> str:
 
 def _base_clause(key: str) -> str:
     """The SQL for an issue; oversized cover art depends on the size settings."""
-    if key != "covers_oversized":
+    if key not in ("covers_oversized", "missing_lyrics"):
         return _ISSUE_CLAUSES[key]
     from api.config import _load
     cfg = _load()
+    if key == "missing_lyrics":
+        before = cfg.lyrics_view_not_found_before
+        ts = datetime.datetime.fromisoformat(before).timestamp() if before else None
+        return lyricsjob.missing_sql(cfg.lyrics_view_instrumental, cfg.lyrics_view_not_found, ts)
     parts = []
     if cfg.cover_embed_size:
         parts.append(f"MAX(COALESCE(cover_width, 0), COALESCE(cover_height, 0)) > {int(cfg.cover_embed_size)}")

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Missing lyrics has its own settings**: the ⚙ after its name in the Quality
+  panel. Count **instrumental** tracks (off by default) and **not found** ones
+  (on), all of them or only those last tried before a date. Counts, the list
+  and the Passing column all follow it.
 - **Fix: Not found stayed "not yet" after fetching lyrics.** Only Look up all…
   remembered what LRCLIB said; **Fetch lyrics…** on a selection (including a
   one-off search) now remembers not found, so the Not found column and the
