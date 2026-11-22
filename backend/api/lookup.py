@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 
 from core.config import settings
 from core.database import db
+from core import mblookups
 from core.inference import infer_tags_from_path
 from core.providers.musicbrainz import MusicBrainzProvider
 from core.tagger import write_cover
@@ -302,7 +303,28 @@ def _artist_releases(artist: str, tracks: list[dict]) -> list[dict]:
 
 @router.post("/album/search")
 async def album_search(req: AlbumSearch):
-    """Release candidates for the selection; one its files already name comes first."""
+    """Release candidates for the selection; one its files already name comes first.
+    None at all: the tracks are remembered as not on MusicBrainz (core/mblookups.py)."""
+    res = await _album_search(req)
+    if not res["candidates"]:
+        with db() as conn:
+            mblookups.record(conn, req.track_ids)
+    return res
+
+
+class MbMissing(BaseModel):
+    track_ids: list[int]
+
+
+@router.post("/mb-missing")
+def mark_mb_missing(req: MbMissing):
+    """Mark tracks not on MusicBrainz (none of the releases offered is theirs)."""
+    with db() as conn:
+        mblookups.record(conn, req.track_ids)
+    return {"marked": len(req.track_ids)}
+
+
+async def _album_search(req: AlbumSearch) -> dict:
     with db() as conn:
         tracks = _selection(conn, req.track_ids)
     if not tracks:

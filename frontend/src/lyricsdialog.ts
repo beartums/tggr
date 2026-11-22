@@ -73,13 +73,17 @@ export function openLyrics(ids: number[], onDone: () => Promise<void>) {
   }
   const skip = new Set<number>(), open = new Set<number>()
   let token = 0
+  let recorded = false     // the fetch saved not found / instrumental: the list may change
 
-  const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+  const close = (refresh = recorded) => {
+    overlay.remove(); document.removeEventListener('keydown', onKey)
+    if (refresh) void onDone()
+  }
   const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
   document.addEventListener('keydown', onKey)
   overlay.addEventListener('click', e => { if (e.target === overlay) close() })
-  $('.fix-confirm-close').addEventListener('click', close)
-  $('#ly-cancel').addEventListener('click', close)
+  $('.fix-confirm-close').addEventListener('click', () => close())
+  $('#ly-cancel').addEventListener('click', () => close())
 
   const render = () => {
     rowsEl.innerHTML = items.map(i => {
@@ -113,6 +117,7 @@ export function openLyrics(ids: number[], onDone: () => Promise<void>) {
       // Shared values as text, the rest as their placeholder.
       if (!filled) { for (const f of FIELDS) qIn(f).value = r.common[f] ?? `{${f}}`; filled = true }
       items = r.items; skip.clear(); render()
+      if (items.some(i => ['missing', 'untagged', 'instrumental'].includes(i.status))) recorded = true
     } catch (e) { if (t === token) { errEl.textContent = errText(e); errEl.hidden = false } }
   }
 
@@ -152,7 +157,7 @@ export function openLyrics(ids: number[], onDone: () => Promise<void>) {
     try {
       const r = await api.lyrics.stage(chosen)
       editToast(r, `lyrics on ${r.changed} track${r.changed !== 1 ? 's' : ''}`)
-      close()
+      close(false)
       await onDone()
     } catch (e) { toast(`Failed: ${errText(e)}`, 'error'); goBtn.disabled = false }
   })

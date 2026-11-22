@@ -6,6 +6,7 @@ is looked up: core/lyricsgroups.py).
 from __future__ import annotations
 
 import asyncio
+import time
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
@@ -82,7 +83,14 @@ async def fetch_lyrics(req: LyricsFetch):
     for f in lyricsgroups.FIELDS:
         vals = {(t.get(f) or "").strip() for t in tracks}
         common[f] = vals.pop() if len(vals) == 1 else None
-    return {"items": await asyncio.gather(*(one(t) for t in tracks)), "common": common}
+    items = await asyncio.gather(*(one(t) for t in tracks))
+    # Remember not found and instrumental like Look up all does: the Not found
+    # column and lookup filters count them, and instrumental leaves Missing lyrics.
+    with db() as conn:
+        for i in items:
+            if i["status"] in (*lyricsjob.NOT_FOUND, "instrumental"):
+                lyricsgroups.record(conn, i["id"], i["status"], time.time())
+    return {"items": items, "common": common}
 
 
 class LyricsStage(BaseModel):

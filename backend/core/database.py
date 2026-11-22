@@ -226,6 +226,14 @@ def init_db() -> None:
                 at       REAL NOT NULL
             );
 
+            -- Albums looked up on MusicBrainz with nothing right found, per track:
+            -- status 'missing'. Only counts while the track has no mb_album_id.
+            CREATE TABLE IF NOT EXISTS mb_lookups (
+                track_id INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+                status   TEXT NOT NULL,
+                at       REAL NOT NULL
+            );
+
             -- Chromaprint fingerprints (fpcalc -raw, first 30 s) for duplicates by
             -- sound; stale when the file's mtime changes. fp '' = fpcalc failed.
             CREATE TABLE IF NOT EXISTS fingerprints (

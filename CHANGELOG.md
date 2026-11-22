@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Missing lyrics has its own settings**: the ⚙ after its name in the Quality
+  panel. Count **instrumental** tracks (off by default) and **not found** ones
+  (on), all of them or only those last tried before a date. Counts, the list
+  and the Passing column all follow it.
+- **MusicBrainz → No album ID remembers albums that aren't on MusicBrainz.** An
+  album search with no releases at all marks its tracks; **Not on MusicBrainz**
+  in Match album (and, for the unticked albums, in Match albums) marks them by
+  hand. The album list gets the same **Not found** column, and the check its
+  own ⚙: count not-found albums or not, or only those tried before a date.
+- **Fix: Not found stayed "not yet" after fetching lyrics.** Only Look up all…
+  remembered what LRCLIB said; **Fetch lyrics…** on a selection (including a
+  one-off search) now remembers not found, so the Not found column and the
+  lookup filters count it, and **instrumental**, which takes the track off
+  Missing lyrics. Closing the dialog refreshes the list.
 - **Fix: albums that left the album list stayed selected.** Adding a picked album
   to a group that ignores the check (or fixing it) took it off the list but kept
   its tracks selected out of sight, so the next album you picked carried them

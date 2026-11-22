@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime
+
 import json
 import uuid
 from collections import OrderedDict
@@ -15,7 +17,7 @@ from fastapi.responses import PlainTextResponse
 
 from core.config import settings
 from core.database import db
-from core import duplicates, groups as grp, layout, lyricsgroups, lyricsjob, search, staging
+from core import duplicates, groups as grp, layout, lyricsgroups, lyricsjob, mblookups, search, staging
 from core.multivalue import MULTI_FIELDS, split_values
 from core.history import STAGEABLE, log_change, snapshot, list_changes, undo_change
 
@@ -74,10 +76,16 @@ def _issue_clause(key: str, gs: list[dict] | None = None) -> str:
 
 def _base_clause(key: str) -> str:
     """The SQL for an issue; oversized cover art depends on the size settings."""
-    if key != "covers_oversized":
+    if key not in ("covers_oversized", "missing_lyrics", "mb_no_album"):
         return _ISSUE_CLAUSES[key]
     from api.config import _load
     cfg = _load()
+    day = lambda d: datetime.datetime.fromisoformat(d).timestamp() if d else None  # noqa: E731
+    if key == "missing_lyrics":
+        return lyricsjob.missing_sql(cfg.lyrics_view_instrumental, cfg.lyrics_view_not_found,
+                                     day(cfg.lyrics_view_not_found_before))
+    if key == "mb_no_album":
+        return mblookups.no_album_sql(_ISSUE_CLAUSES[key], cfg.mb_view_not_found, day(cfg.mb_view_not_found_before))
     parts = []
     if cfg.cover_embed_size:
         parts.append(f"MAX(COALESCE(cover_width, 0), COALESCE(cover_height, 0)) > {int(cfg.cover_embed_size)}")
@@ -964,14 +972,17 @@ def _album_checks(conn, view: "View", dirs: set[str]) -> dict[tuple, dict]:
     if not keys or not dirs:
         return {}
     failing = " AND ".join(_issue_clause(k) for k in keys)
-    lyrics = "missing_lyrics" in keys
-    nf = lyricsjob.not_found_sql()
+    # The Not found column: lyrics lookups, else MusicBrainz ones.
+    table, nf = (("lyrics_lookups", lyricsjob.not_found_sql()) if "missing_lyrics" in keys else
+                 ("mb_lookups", mblookups.not_found_sql()) if "mb_no_album" in keys else (None, None))
+    lyrics = table is not None
     extra = (f", SUM(({failing}) AND {nf}) AS tried,"
              f" MAX(CASE WHEN ({failing}) AND {nf} THEN l.at END) AS last") if lyrics else ""
+    join = f" LEFT JOIN {table} l ON l.track_id = tracks.id" if lyrics else ""
     out = {}
     for r in conn.execute(
             f"SELECT directory, COALESCE(album, '') AS a, COUNT(*) AS total, SUM({failing}) AS failing{extra}"
-            f" FROM tracks LEFT JOIN lyrics_lookups l ON l.track_id = tracks.id"
+            f" FROM tracks{join}"
             f" WHERE directory IN (SELECT value FROM json_each(?)) GROUP BY directory, COALESCE(album, '')",
             [json.dumps(sorted(dirs))]):
         d = {"total": r["total"], "passing": r["total"] - (r["failing"] or 0)}

@@ -21,6 +21,11 @@ def test_fetch_statuses_and_stage(client, lib, monkeypatch):
     assert [(i["id"], i["status"]) for i in items] == [
         (a, "synced"), (b, "instrumental"), (c, "missing"), (e, "has_plain"), (f, "untagged")]   # e: plain, no synced found
     assert items[0]["lyrics"] == SYNCED
+    with db() as conn:     # not found and instrumental are remembered; found ones aren't
+        assert dict(conn.execute("SELECT track_id, status FROM lyrics_lookups").fetchall()) == {
+            b: "instrumental", c: "missing", f: "untagged"}
+    listed = client.get("/api/library/tracks", params={"issue": "missing_lyrics"}).json()
+    assert b not in {t["id"] for t in listed["tracks"]}     # instrumental left Missing lyrics
     plain = client.post("/api/lyrics/fetch", json={"track_ids": [a], "prefer": "plain"}).json()["items"][0]
     assert (plain["status"], plain["lyrics"]) == ("plain", "Here comes old flat top")
 
@@ -281,3 +286,64 @@ def test_album_list_counts_passing_and_not_found_lookups(client, lib):
         assert set(lyricsjob.targets(conn, None, False)) == {ids[3]}
         assert set(lyricsjob.targets(conn, None, False, retry_days=30)) == {ids[1], ids[3]}
         assert set(lyricsjob.targets(conn, None, True)) == {ids[1], ids[2], ids[3]}
+
+
+def test_missing_lyrics_view_settings(client, lib):
+    import datetime
+    import time
+    from core import lyricsgroups
+    d = lib / "Shared" / "Ann" / "View"
+    plain, instr, old, new = (_insert(d / f"0{i}.mp3", album="View", title=f"T{i}", artist="Ann") for i in range(1, 5))
+    with db() as conn:
+        lyricsgroups.record(conn, instr, "instrumental", time.time())
+        lyricsgroups.record(conn, old, "missing", time.time() - 40 * 86400)
+        lyricsgroups.record(conn, new, "missing", time.time())
+
+    def listed():
+        r = client.get("/api/library/tracks", params={"issue": "missing_lyrics", "limit": 50}).json()
+        return {t["id"] for t in r["tracks"]}
+
+    assert listed() == {plain, old, new}                                  # defaults: as before
+    client.patch("/api/config", json={"lyrics_view_instrumental": True})
+    assert listed() == {plain, instr, old, new}
+    week_ago = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
+    client.patch("/api/config", json={"lyrics_view_not_found_before": week_ago})
+    assert listed() == {plain, instr, old}                                # not found this week: hidden
+    client.patch("/api/config", json={"lyrics_view_not_found": False})
+    assert listed() == {plain, instr}
+    assert client.get("/api/library/issues").json()["missing_lyrics"]["tracks"] == 2
+    assert client.patch("/api/config", json={"lyrics_view_not_found_before": "soon"}).status_code == 400
+
+
+def test_mb_no_album_not_found_and_view_settings(client, lib, monkeypatch):
+    import datetime
+    import time
+    from core import mblookups
+    from api import lookup
+    d = lib / "Shared" / "Bo" / "Rare"
+    a, b, c = (_insert(d / f"0{i}.mp3", album="Rare", title=f"T{i}", artist="Bo") for i in range(1, 4))
+    monkeypatch.setattr(lookup.mbp, "search_releases", lambda *a, **k: [])
+    monkeypatch.setattr(lookup, "_pinned", lambda *a, **k: _none())
+    assert client.post("/api/lookup/album/search", json={"track_ids": [a]}).json()["candidates"] == []
+    assert client.post("/api/lookup/mb-missing", json={"track_ids": [b]}).json() == {"marked": 1}
+    with db() as conn:
+        assert {r[0] for r in conn.execute("SELECT track_id FROM mb_lookups WHERE status = 'missing'")} == {a, b}
+        conn.execute("UPDATE mb_lookups SET at = ? WHERE track_id = ?", (time.time() - 40 * 86400, a))
+
+    def listed():
+        r = client.get("/api/library/tracks", params={"issue": "mb_no_album", "limit": 50}).json()
+        return {t["id"] for t in r["tracks"]}
+
+    assert listed() == {a, b, c}
+    (row,) = client.get("/api/library/album-list", params={"issue": "mb_no_album"}).json()
+    assert (row["lookup"]["failing"], row["lookup"]["tried"]) == (3, 2)
+    week_ago = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
+    client.patch("/api/config", json={"mb_view_not_found_before": week_ago})
+    assert listed() == {a, c}
+    client.patch("/api/config", json={"mb_view_not_found": False})
+    assert listed() == {c}
+    assert mblookups.not_found_sql()
+
+
+async def _none():
+    return []

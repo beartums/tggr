@@ -1674,6 +1674,15 @@ button.scan-status[hidden] { display: none; }
 .q-switch::after { content: ''; position: absolute; top: 1px; left: 1px; width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); transition: left .12s; }
 .q-switch[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 25%, transparent); }
 .q-switch[aria-pressed="true"]::after { left: 11px; background: var(--accent); }
+.q-gear { flex: none; border: 0; background: none; color: var(--text-dim); cursor: pointer; padding: 0 2px; display: inline-flex; opacity: .55; }
+.q-gear svg { width: 13px; height: 13px; }
+.q-gear:hover { color: var(--accent); opacity: 1; }
+.view-settings .vs-row { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.view-settings { min-width: 420px; }
+.view-settings .vs-row > span { flex: 1; }
+.view-settings .vs-sub { margin-left: 32px; font-size: 13px; }
+.view-settings .vs-sub > span { flex: none; white-space: nowrap; }
+.view-settings .vs-disabled { opacity: .45; }
 .q-run { flex: none; border: 0; background: none; color: var(--text-dim); cursor: pointer; padding: 0 2px; font-size: 13px; }
 .q-run:hover { color: var(--accent); }
 .q-running { animation: q-spin 1s linear infinite; }

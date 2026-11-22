@@ -26,6 +26,7 @@ const MB_IDS = ['mb_track_id', 'mb_artist_id', 'mb_album_id', 'mb_album_artist_i
 interface Row {
   a: CoverAlbum
   status: 'waiting' | 'searching' | 'found' | 'none' | 'error' | 'staged'
+  marked?: boolean          // remembered as not on MusicBrainz
   match: MbMatch | null
   quality: number
   paired: number           // share of the folder's tracks paired with a release track
@@ -63,6 +64,7 @@ export function openMbAlbums(albums: CoverAlbum[], onDone: () => Promise<void>) 
       <div class="settings-hint bc-where" id="mbb-hint">Only what would change is listed. Click a line (or one genre, or the new cover) to leave it out for that album. Titles and track numbers: <strong>Review…</strong>.</div>
       <div class="fix-confirm-footer">
         <span id="mbb-sum" class="ma-dim bc-sum"></span>
+        <button class="btn btn-ghost" id="mbb-missing" hidden title="The unticked albums' releases are all wrong: remember them as not on MusicBrainz (No MusicBrainz album's Not found)"></button>
         <button class="btn btn-ghost" id="mbb-cancel">Cancel</button>
         <button class="btn btn-primary" id="mbb-go" disabled>Stage</button>
       </div>
@@ -89,6 +91,16 @@ export function openMbAlbums(albums: CoverAlbum[], onDone: () => Promise<void>) 
   $('#mbb-cancel').addEventListener('click', close)
 
   const usable = (r: Row) => !!r.match && r.status === 'found'
+  const unticked = () => rows.filter(r => usable(r) && !r.on && !r.marked)
+  const missingBtn = $<HTMLButtonElement>('#mbb-missing')
+  missingBtn.addEventListener('click', async () => {
+    const off = unticked()
+    try { await api.lookup.mbMissing(off.flatMap(r => r.a.track_ids)) } catch (e) { toast(`Failed: ${errText(e)}`, 'error'); return }
+    for (const r of off) r.marked = true
+    staged = true            // the list changes: refresh it on close
+    renderAll()
+    toast(`Marked ${off.length} album${off.length !== 1 ? 's' : ''} not on MusicBrainz`, 'info')
+  })
 
   // What a row would write: its tag fields, its genres, its cover.
   const tagFields = (r: Row) => TAG_KEYS.filter(f => fieldOn(f) && !r.off.has(f)
@@ -157,7 +169,7 @@ export function openMbAlbums(albums: CoverAlbum[], onDone: () => Promise<void>) 
     }
     const status = {
       waiting: '<span class="ma-dim">Waiting…</span>', searching: '<span class="ma-dim">Searching MusicBrainz…</span>',
-      none: '<span class="ma-dim">No release found — Review… to search by hand</span>',
+      none: '<span class="ma-dim">No release found (remembered as not on MusicBrainz) — Review… to search by hand</span>',
       error: `<span class="review-error">${esc(r.note)}</span>`, found: '', staged: '',
     }[r.status]
     tr.className = r.on && usable(r) ? '' : 'mbb-row-off'
@@ -167,7 +179,7 @@ export function openMbAlbums(albums: CoverAlbum[], onDone: () => Promise<void>) 
         <div class="mbb-head"><div class="mbb-covers">${covers}</div><div class="mbb-id">${title}</div><div class="mbb-score-wrap">${score}</div></div>
         ${m ? `<div class="mbb-release">MusicBrainz: <strong>${esc(m.release.album ?? '')}</strong>${m.release.album_artist ? ` · ${esc(m.release.album_artist)}` : ''}${r.paired < GOOD ? ' <span class="mb-bad-note">— weak match, check it with Review…</span>' : ''}</div>` : ''}
         ${lines ? `<div class="mbb-lines">${lines}</div>` : ''}${same}
-        ${status ? `<div>${status}</div>` : ''}${r.status === 'staged' ? `<div class="bc-done">✓ ${esc(r.note || 'Staged')}</div>` : ''}</td>
+        ${status ? `<div>${status}</div>` : ''}${r.status === 'staged' ? `<div class="bc-done">✓ ${esc(r.note || 'Staged')}</div>` : ''}${r.marked && r.status === 'found' ? '<div class="bc-done">✓ Marked not on MusicBrainz</div>' : ''}</td>
       <td class="mbb-actions"><button type="button" class="btn btn-ghost btn-sm" data-review ${r.status === 'staged' || busy ? 'disabled' : ''} title="Match it track by track">Review…</button>
         ${usable(r) ? `<button type="button" class="btn btn-ghost btn-sm" data-pick-cover ${busy ? 'disabled' : ''} title="Another cover: search MusicBrainz, a URL or a file">Cover…</button>` : ''}</td>`
   }
@@ -180,6 +192,10 @@ export function openMbAlbums(albums: CoverAlbum[], onDone: () => Promise<void>) 
     const can = rows.filter(usable)
     allEl.checked = can.length > 0 && can.every(r => r.on)
     allEl.indeterminate = !allEl.checked && can.some(r => r.on)
+    const off = unticked()
+    missingBtn.hidden = !off.length
+    missingBtn.disabled = busy
+    missingBtn.textContent = `Not on MusicBrainz (${off.length})`
   }
   const renderAll = () => { rows.forEach((_, i) => renderRow(i)); summary() }
   renderAll()
@@ -244,7 +260,7 @@ export function openMbAlbums(albums: CoverAlbum[], onDone: () => Promise<void>) 
       if (q.quality >= 0.9) break
     }
     if (!best && failed) throw failed
-    if (!best || closed) { r.status = 'none'; return }
+    if (!best || closed) { r.status = 'none'; if (!s.candidates.length) staged = true; return }   // the server remembered it
     const m = r.match = await api.lookup.albumMatch(r.a.track_ids, best.id)
     const paired = m.items.length ? m.items.filter(it => it.key).length / m.items.length : 0
     Object.assign(r, { quality: best.quality, paired, status: 'found', on: paired >= GOOD })

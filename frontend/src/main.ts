@@ -448,11 +448,80 @@ async function renderQualityPanel() {
       <button type="button" class="q-switch" data-q-switch aria-pressed="${!off}" title="${off ? 'Off: not run with the panel (it\'s slow on a big library). Click to turn it on' : 'On: run each time the panel opens or the library changes. Click to turn it off'}" aria-label="${esc(issue.label)} on"></button>
       <span class="quality-issue-dot${issue.warn ? ' quality-issue-dot-warn' : ''}"></span>
       <span class="nav-label">${issue.label}</span>
+      ${VIEW_SETTINGS.has(issue.key) ? `<button type="button" class="q-gear" data-q-gear title="What this view counts" aria-label="${esc(issue.label)} settings">${ICON.gear}</button>` : ''}
       ${off ? '<button type="button" class="q-run" data-q-run title="Check it now and keep the count">↻</button>' : ''}
       <span class="nav-count">${count == null ? '–' : count}</span>
     `
     qualityListEl.appendChild(li)
   }
+}
+
+/** What a Quality view counts: tracks looked up with nothing found (all, or tried before a day), and for lyrics instrumental ones. */
+interface ViewSpec {
+  issue: IssueKey; title: string; nf: string; nfKey: 'lyrics_view_not_found' | 'mb_view_not_found'
+  beforeKey: 'lyrics_view_not_found_before' | 'mb_view_not_found_before'; instr?: boolean
+}
+const VIEW_SPECS: ViewSpec[] = [
+  { issue: 'missing_lyrics', title: 'Missing lyrics', nf: 'looked up, LRCLIB had nothing', instr: true,
+    nfKey: 'lyrics_view_not_found', beforeKey: 'lyrics_view_not_found_before' },
+  { issue: 'mb_no_album', title: 'MusicBrainz: No album ID', nf: 'no release found, or marked not on MusicBrainz',
+    nfKey: 'mb_view_not_found', beforeKey: 'mb_view_not_found_before' },
+]
+/** Quality views with their own settings (the ⚙ after the name). */
+const VIEW_SETTINGS = new Map<string, () => void>(VIEW_SPECS.map(v => [v.issue, () => void openViewSettings(v)]))
+
+async function openViewSettings(v: ViewSpec) {
+  let s: AppSettings
+  try { s = await api.settings.get() } catch (e) { toast(`Failed: ${errText(e)}`, 'error'); return }
+  let instr = s.lyrics_view_instrumental, nf = s[v.nfKey]
+  const overlay = document.createElement('div')
+  overlay.className = 'modal-overlay'
+  overlay.innerHTML = `
+    <div class="modal-card view-settings">
+      <div class="modal-title">${esc(v.title)}: what it counts</div>
+      ${v.instr ? `<div class="vs-row"><button type="button" class="q-switch" id="vs-instr"></button>
+        <span>Instrumental tracks <span class="al-dim">(LRCLIB said instrumental)</span></span></div>` : ''}
+      <div class="vs-row"><button type="button" class="q-switch" id="vs-nf"></button>
+        <span>Not found <span class="al-dim">(${esc(v.nf)})</span></span></div>
+      <div class="vs-row vs-sub" id="vs-before-row"><span>only if last tried before</span>
+        <input type="date" id="vs-before" value="${esc(s[v.beforeKey])}" />
+        <button type="button" class="btn btn-link btn-sm" id="vs-before-clear" title="Count every not-found track">any time</button></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="vs-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="vs-save">Save</button>
+      </div>
+    </div>`
+  document.body.appendChild(overlay)
+  const q = <T extends HTMLElement>(sel: string) => overlay.querySelector<T>(sel)
+  const before = q<HTMLInputElement>('#vs-before')!
+  const paint = () => {
+    const i = q('#vs-instr')
+    if (i) {
+      i.setAttribute('aria-pressed', String(instr))
+      i.title = instr ? 'Counted: click to leave instrumental tracks out' : 'Left out: click to count instrumental tracks'
+    }
+    q('#vs-nf')!.setAttribute('aria-pressed', String(nf))
+    q('#vs-nf')!.title = nf ? 'Counted: click to leave not-found tracks out' : 'Left out: click to count not-found tracks'
+    q('#vs-before-row')!.classList.toggle('vs-disabled', !nf)
+    before.disabled = !nf
+  }
+  paint()
+  q('#vs-instr')?.addEventListener('click', () => { instr = !instr; paint() })
+  q('#vs-nf')!.addEventListener('click', () => { nf = !nf; paint() })
+  q('#vs-before-clear')!.addEventListener('click', () => { before.value = '' })
+  const close = () => overlay.remove()
+  overlay.addEventListener('click', e => { if (e.target === overlay) close() })
+  q('#vs-cancel')!.addEventListener('click', close)
+  q('#vs-save')!.addEventListener('click', async () => {
+    const update: Partial<AppSettings> = { [v.nfKey]: nf, [v.beforeKey]: before.value }
+    if (v.instr) update.lyrics_view_instrumental = instr
+    try { await api.settings.update(update) } catch (e) { toast(`Failed: ${errText(e)}`, 'error'); return }
+    close()
+    state.qualityIssues = null
+    state.offset = 0
+    await renderQualityPanel()
+    if (state.selectedIssue === v.issue) await loadTracks()
+  })
 }
 
 /** Turn a check on or off for the panel (and the list's quality dots); saved at once. */
@@ -768,18 +837,18 @@ function drawAlbumList(fetched: AlbumRow[]) {
   const checked = rows.some(r => r.passing != null)
   const passing = (r: AlbumRow) => r.passing == null ? '' :
     `<span class="${r.passing === r.total ? 'al-full' : ''}" title="${r.passing} of the album's ${r.total} tracks pass this check; ${r.tracks} listed">${r.passing} / ${r.total}</span>`
-  // Missing lyrics: of the tracks still missing them, how many LRCLIB had nothing for.
+  // Missing lyrics / No MusicBrainz album: of the failing tracks, how many a lookup found nothing for.
   const lookedUp = rows.some(r => r.lookup)
   const day = (t: number) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
   const lookup = (r: AlbumRow) => {
     const l = r.lookup
     if (!l || !l.failing || !l.tried) return l?.failing ? '<span class="al-dim">not yet</span>' : ''
     const all = l.tried === l.failing
-    return `<span class="${all ? 'al-tried-all' : ''}" title="${l.tried} of ${l.failing} tracks missing lyrics were looked up with nothing found${l.last ? `, last ${esc(day(l.last))}` : ''}${all ? ' — every one tried' : ''}">${all ? '✓ all' : `${l.tried} / ${l.failing}`}${l.last ? ` <span class="al-dim">${esc(day(l.last))}</span>` : ''}</span>`
+    return `<span class="${all ? 'al-tried-all' : ''}" title="${l.tried} of ${l.failing} tracks failing this check were looked up with nothing found${l.last ? `, last ${esc(day(l.last))}` : ''}${all ? ' — every one tried' : ''}">${all ? '✓ all' : `${l.tried} / ${l.failing}`}${l.last ? ` <span class="al-dim">${esc(day(l.last))}</span>` : ''}</span>`
   }
   const dot = (r: AlbumRow) => { const q = albumQuality(r.quality ?? {}, r.tracks); return `<span class="quality-dot quality-dot-${q.rating}" title="${esc(q.title)}"></span>` }
   albumListEl.innerHTML = `<table class="track-table album-table"><thead><tr>
-      ${th('quality', '', 'al-q', 'Quality: the worst track decides. Click to sort')}<th class="col-check"><input type="checkbox" id="album-select-all" title="Select every album on this page" /></th><th class="al-cover"><span class="col-resizer" data-al-cover-resize title="Drag to resize the covers · double-click to reset"></span></th>${th('album', 'Album')}${th('artist', 'Artist', '', 'Album artist, or the track artists when there is none')}${th('tracks', 'Tracks', 'al-num')}${checked ? th('passing', 'Passing', 'al-num', 'Tracks in the whole album that pass this check. Click to sort') : ''}${lookedUp ? th('lookup', 'Not found', '', 'Tracks missing lyrics that a lookup found nothing for, and when. Click to sort') : ''}${th('discs', 'Discs', 'al-num')}
+      ${th('quality', '', 'al-q', 'Quality: the worst track decides. Click to sort')}<th class="col-check"><input type="checkbox" id="album-select-all" title="Select every album on this page" /></th><th class="al-cover"><span class="col-resizer" data-al-cover-resize title="Drag to resize the covers · double-click to reset"></span></th>${th('album', 'Album')}${th('artist', 'Artist', '', 'Album artist, or the track artists when there is none')}${th('tracks', 'Tracks', 'al-num')}${checked ? th('passing', 'Passing', 'al-num', 'Tracks in the whole album that pass this check. Click to sort') : ''}${lookedUp ? th('lookup', 'Not found', '', 'Tracks failing this check that a lookup found nothing for (LRCLIB, or MusicBrainz), and when. Click to sort') : ''}${th('discs', 'Discs', 'al-num')}
       ${th('year', 'Year')}${th('genre', 'Genre')}${th('format', 'Format')}${th('folder', 'Folder')}</tr></thead><tbody>
     ${rows.map((r, i) => ({ r, i })).slice(albumPage.offset, albumPage.offset + state.pageSize).map(({ r, i }) => `<tr data-i="${i}" data-album-key="${esc(listKey(r))}" class="${albumPicks.has(listKey(r)) ? 'album-picked' : ''}${r.staged || r.moving ? ' row-staged' : ''}" title="${esc(r.directory)}\nClick to open · the box (or Ctrl/⌘-click) selects, Shift-click a range">
       <td class="al-q">${dot(r)}</td><td class="col-check">${r.ids.length ? `<input type="checkbox" class="album-check" ${albumPicks.has(listKey(r)) ? 'checked' : ''} aria-label="Select this album" />` : '<span class="ro-lock" title="Read-only">🔒</span>'}</td><td class="al-cover"><img loading="lazy" src="${coverUrl(r.cover_track_id)}" alt="" onerror="this.style.visibility='hidden'" /></td>
@@ -3883,6 +3952,7 @@ qualityListEl.addEventListener('click', async (e) => {
   const li = (e.target as HTMLElement).closest<HTMLElement>('.quality-issue-item')
   if (!li?.dataset.issue) return
   const issue = li.dataset.issue
+  if ((e.target as HTMLElement).closest('[data-q-gear]')) { VIEW_SETTINGS.get(issue)?.(); return }
   const sw = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-q-switch]')
   if (sw) { sw.disabled = true; await setQualityCheck(issue as IssueKey, sw.getAttribute('aria-pressed') !== 'true'); return }
   const run = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-q-run]')
