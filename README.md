@@ -78,9 +78,10 @@ gives it away, even though its format and bitrate say lossless.
 ## Features
 
 - **Libraries** — scan one or more music folders into a SQLite index (exclude
-  globs, optional auto-rescan). Browse a tag tree that opens down through
+  globs, optional auto-rescan). A landing page sums up the library and what
+  needs attention. Browse a tag tree that opens down through
   the tags you choose (Genre › Album Artist › Album…, set by drag and drop),
-  or by folder, album grid or quality issue. Search
+  or by folder, group, album (a sortable list or a cover grid) or quality issue. Search
   as full text, glob or regex over the fields you choose. Page through big
   views with rows per page and a jump-to row.
 - **Bulk tagging** — every common tag (composer, BPM, lyrics, compilation…)
@@ -91,12 +92,16 @@ gives it away, even though its format and bitrate say lossless.
   auto-number and case normalization.
 - **Review before writing** — edits, lookups, moves and renames are staged
   first. **Review** shows a field-by-field diff and the planned moves, then
-  writes everything in the background as one undoable change, or discards it.
-  **History** undoes any past change.
+  writes everything in the background as one undoable change, or discards it,
+  whole or one field, move or action at a time. Tracks and albums with staged
+  changes are marked in the track list and both album views. **History** undoes
+  any past change, or any part of one.
 - **Templated file structure** — each library (or group of tracks) has a
   layout such as `{album_artist_the}/{album_the}/{track_number:02d} {title}`.
   *Not in layout* lists tracks that aren't where their layout puts them, and
-  re-files the ones you pick. **Rename files…** does PowerRename-style renames
+  re-files the ones you pick; **Move to layout…** previews the final folders
+  first, and a whole album brings its other files (covers, booklets) and
+  removes the emptied folder. **Rename files…** does PowerRename-style renames
   (regex, captures, counters). Folders move or rename from the Files tree,
   with drag and drop. Moves stay inside their library, never overwrite, and
   undo across filesystems.
@@ -104,7 +109,10 @@ gives it away, even though its format and bitrate say lossless.
   *Match albums* for many albums at once, AcoustID fingerprints and Discogs.
   **Auto-fix** proposes album, album artist, year, numbers, genre and composer
   per track, and you can drop any track or field, or pick another match.
-  Tags can also be inferred from file names.
+  Tags can also be inferred from file names. For CD rips, disc IDs (read from
+  the rip or computed from track lengths), barcode and ISRCs are kept, and
+  **Add to MusicBrainz…** opens a pre-filled *Add release* page for a disc
+  MusicBrainz doesn't have.
 - **Cover art** — from disk, the Cover Art Archive, a MusicBrainz search or a
   URL, written to the folder, the tracks or both and resized to your settings.
   Find covers for many albums at once; **Covers…** moves, copies, shrinks or
@@ -114,13 +122,24 @@ gives it away, even though its format and bitrate say lossless.
   soundtracks, and you can search by hand.
 - **Quality** — views for missing tags, lyrics, covers and files, oversized
   covers, tracks not in layout, and duplicate tracks (tags + length, or audio
-  fingerprint) and albums, with a review that keeps the best copy.
+  fingerprint) and albums, with a review that keeps the best copy. Each check
+  can be switched off, and counts tracks and albums the way the album list does.
   Bitrate/sample-rate columns and a per-file **spectrogram** expose lossy
   transcodes.
+- **Groups** — your own sets of tracks (a track can be in several), for
+  filtering (in any / each / none) and for settings that differ from the
+  library's: a group's own layout, and the Quality checks it ignores (every
+  check applies until you add one to ignore).
+- **Clean up** — **Convert audio** turns files tggr can't tag (WAV/AIFF →
+  FLAC, WMA/MP2 → MP3 V0) in the background, keeping the tags and checking
+  each result's length; **Empty folders** and **Delete files** tidy what's left.
 - **Files & playback** — `.m3u` export, ReplayGain, a recoverable trash, and
   seekable audio in the tag editor.
 - **Ops** — optional rate-limited password login, API keys encrypted at rest,
-  `/api/health`, a responsive UI and keyboard shortcuts (press `?`).
+  **Settings → Data → Backup** (a zip of the database, settings, interface
+  preferences and environment, all or in parts) and restore, background jobs
+  shown in the top bar and status bar, `/api/health`, a responsive UI and
+  keyboard shortcuts (press `?`).
 
 ## Configuration
 
