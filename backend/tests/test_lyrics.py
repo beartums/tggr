@@ -21,8 +21,11 @@ def test_fetch_statuses_and_stage(client, lib, monkeypatch):
     assert [(i["id"], i["status"]) for i in items] == [
         (a, "synced"), (b, "instrumental"), (c, "missing"), (e, "has_plain"), (f, "untagged")]   # e: plain, no synced found
     assert items[0]["lyrics"] == SYNCED
-    with db() as conn:     # not found is remembered (Not found column); found and instrumental aren't
-        assert dict(conn.execute("SELECT track_id, status FROM lyrics_lookups").fetchall()) == {c: "missing", f: "untagged"}
+    with db() as conn:     # not found and instrumental are remembered; found ones aren't
+        assert dict(conn.execute("SELECT track_id, status FROM lyrics_lookups").fetchall()) == {
+            b: "instrumental", c: "missing", f: "untagged"}
+    listed = client.get("/api/library/tracks", params={"issue": "missing_lyrics"}).json()
+    assert b not in {t["id"] for t in listed["tracks"]}     # instrumental left Missing lyrics
     plain = client.post("/api/lyrics/fetch", json={"track_ids": [a], "prefer": "plain"}).json()["items"][0]
     assert (plain["status"], plain["lyrics"]) == ("plain", "Here comes old flat top")
 
