@@ -716,8 +716,26 @@ async function renderAlbumList() {
   try { fetched = await api.library.albumList(viewParams()) } catch (e) { albumListEl.innerHTML = `<div class="album-empty">${esc(String(e))}</div>`; return }
   albumPageFor('list' + JSON.stringify(viewParams()), fetched.length)
   if (!fetched.length) { albumListEl.innerHTML = '<div class="album-empty">No albums found.</div>'; return }
+  keepListedPicks(fetched)
   redrawAlbumList = () => drawAlbumList(fetched)
   drawAlbumList(fetched)
+}
+
+// After an edit the list can lose albums (added to a group that ignores this
+// check, tag filled in...). Picked albums no longer listed stop being selected,
+// and a still-listed one keeps only its listed tracks: otherwise the next pick
+// silently carries tracks you can't see.
+function keepListedPicks(fetched: AlbumRow[]) {
+  if (!albumPicks.size) return
+  const listed = new Map(fetched.map(r => [listKey(r), r.ids]))
+  for (const k of [...albumPicks.keys()]) {
+    const ids = listed.get(k)
+    if (ids?.length) albumPicks.set(k, ids); else albumPicks.delete(k)
+  }
+  state.selectedIds = new Set([...albumPicks.values()].flat())
+  if (!albumPicks.size) albumAnchor = null
+  updateBulkBar()
+  renderEditor()
 }
 
 function drawAlbumList(fetched: AlbumRow[]) {

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Fix: albums that left the album list stayed selected.** Adding a picked album
+  to a group that ignores the check (or fixing it) took it off the list but kept
+  its tracks selected out of sight, so the next album you picked carried them
+  along ("2 of 5 in it"). Selected albums now follow the list: ones no longer
+  listed are dropped, and a listed one keeps only its listed tracks.
 - **Quality album views show how much of each album passes**: a **Passing**
   column ("12 / 25": tracks in the whole album that pass the check, not just
   the ones listed). Sort it to bring nearly done albums to the top.
