@@ -53,13 +53,13 @@ export function saveColPrefs(cols: Set<string>): void {
   localStorage.setItem(COLS_KEY, JSON.stringify([...cols]))
 }
 
-export type TagField = 'title' | 'artist' | 'album' | 'album_artist' | 'year' | 'track_number' | 'disc_number' | 'genre' | 'comment' | 'composer' | 'bpm' | 'lyrics'
+export type TagField = 'title' | 'artist' | 'album' | 'album_artist' | 'year' | 'track_number' | 'disc_number' | 'genre' | 'comment' | 'composer' | 'bpm' | 'label' | 'lyrics'
 
 // Text/textarea fields driven by the generic form loop. `compilation` is a
 // boolean checkbox handled separately in populateForm/saveTags.
 export const TAG_FIELDS: TagField[] = [
   'title', 'artist', 'album', 'album_artist', 'year',
-  'track_number', 'disc_number', 'genre', 'comment', 'composer', 'bpm', 'lyrics',
+  'track_number', 'disc_number', 'genre', 'comment', 'composer', 'bpm', 'label', 'lyrics',
 ]
 
 // Tags the Tags panel browses by, in order. Each one's values open to the

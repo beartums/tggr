@@ -1972,3 +1972,32 @@ button.scan-status[hidden] { display: none; }
 .status-bg[hidden] { display: none; }
 .status-bg::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: status-bg-pulse 1.2s ease-in-out infinite; }
 @keyframes status-bg-pulse { 50% { opacity: 0.3; } }
+
+/* ─── Album sources (sources.ts) ─────────────────────────────────────────── */
+.source-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.src-chip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text); font: inherit; font-size: 11px; padding: 1px 8px; cursor: pointer; }
+.src-chip:hover { border-color: var(--accent); }
+.src-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; background: var(--text-dim); }
+.src-confirmed .src-dot, .src-dot.src-confirmed { background: var(--success); }
+.src-waiting .src-dot, .src-dot.src-waiting { background: #eab308; }
+.src-missing .src-dot, .src-dot.src-missing { background: transparent; border: 1px solid var(--text-dim); }
+.src-warn { color: #eab308; }
+.hold-tip { position: fixed; z-index: 1000; max-width: min(320px, 90vw); padding: 6px 8px; border-radius: 6px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); font-size: 12px; white-space: pre-line; pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+.src-modal { width: min(760px, 96vw); max-height: 92vh; display: flex; flex-direction: column; }
+.src-body { overflow: auto; padding: 8px 16px; display: flex; flex-direction: column; gap: 12px; }
+.src-sec-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.src-paste { display: inline-flex; gap: 4px; margin-left: auto; }
+.src-paste input { width: 190px; font-size: 12px; }
+.src-cand { display: flex; align-items: center; gap: 10px; padding: 4px; border: 1px solid transparent; border-radius: 6px; }
+.src-cand-on { border-color: var(--accent); }
+.src-cand img, .src-noimg { width: 48px; height: 48px; object-fit: cover; border-radius: 4px; background: var(--surface2); flex: none; display: inline-flex; align-items: center; justify-content: center; }
+.src-cand-text { flex: 1; min-width: 0; font-size: 12px; }
+.src-cand-text > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.src-state { color: var(--success); padding: 0 8px; }
+.src-fill { padding: 6px 16px; }
+.cover-order { margin: 4px 0; padding-left: 20px; }
+.cover-order li { display: flex; align-items: center; gap: 4px; padding: 1px 0; }
+.cover-order li span { flex: 1; }
+#src-threshold { width: 70px; }
+@media (max-width: 600px) { .src-paste { margin-left: 0; } .src-paste input { width: 140px; } }
+.tog-row.vs-disabled { opacity: .45; }

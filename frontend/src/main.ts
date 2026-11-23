@@ -29,6 +29,7 @@ import { openDuplicates } from './duplicates'
 import { openLyricsSearch } from './lyricssearch'
 import { openFindReplace } from './findreplace'
 import { shapeSettings, setPill, snapshotSettings, changedSections, sectionName } from './settingslayout'
+import { collectSourceSettings, loadSourceSettings, renderSourceChips, wireSourceSettings } from './sources'
 import { renderHome } from './home'
 import { openGroupMembership, renderGroups, wireGroups, readGroups } from './groups'
 import { renderBackground, renderAbout, wireBackground } from './background'
@@ -458,14 +459,16 @@ async function renderQualityPanel() {
 
 /** What a Quality view counts: tracks looked up with nothing found (all, or tried before a day), and for lyrics instrumental ones. */
 interface ViewSpec {
-  issue: IssueKey; title: string; nf: string; nfKey: 'lyrics_view_not_found' | 'mb_view_not_found'
-  beforeKey: 'lyrics_view_not_found_before' | 'mb_view_not_found_before'; instr?: boolean
+  issue: IssueKey; title: string; nf: string; nfKey: 'lyrics_view_not_found' | 'mb_view_not_found' | 'sources_view_not_found'
+  beforeKey: 'lyrics_view_not_found_before' | 'mb_view_not_found_before' | 'sources_view_not_found_before'; instr?: boolean
 }
 const VIEW_SPECS: ViewSpec[] = [
   { issue: 'missing_lyrics', title: 'Missing lyrics', nf: 'looked up, LRCLIB had nothing', instr: true,
     nfKey: 'lyrics_view_not_found', beforeKey: 'lyrics_view_not_found_before' },
   { issue: 'mb_no_album', title: 'MusicBrainz: No album ID', nf: 'no release found, or marked not on MusicBrainz',
     nfKey: 'mb_view_not_found', beforeKey: 'mb_view_not_found_before' },
+  { issue: 'covers_no_source', title: 'Cover art: No cover source', nf: 'looked up on Deezer / iTunes, nothing right found',
+    nfKey: 'sources_view_not_found', beforeKey: 'sources_view_not_found_before' },
 ]
 /** Quality views with their own settings (the ⚙ after the name). */
 const VIEW_SETTINGS = new Map<string, () => void>(VIEW_SPECS.map(v => [v.issue, () => void openViewSettings(v)]))
@@ -1693,6 +1696,12 @@ function populateForm(tracks: Track[]) {
   delete cb.dataset.dirty
   cb.dataset.filled = cb.indeterminate ? 'mixed' : String(cb.checked)
   applyEditorRules()
+  renderSourceChips(document.getElementById('source-chips')!, tracks, async () => {
+    state.qualityIssues = null
+    if (state.sidebarMode === 'quality') renderQualityPanel()
+    await loadTracks()
+    await fillEditorForm()
+  })
 }
 
 // ─── Editor rules: one album, and locked fields ──────────────────────────────
@@ -4084,13 +4093,14 @@ function readSecrets(): Partial<AppSettings> {
 }
 const paneSettings = document.getElementById('pane-settings')!
 shapeSettings(paneSettings)
+wireSourceSettings(paneSettings)
 document.getElementById('pane-settings')!.addEventListener('click', async (e) => {
   const t = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-source-test]')
   if (t) {
     e.preventDefault()
     const src = t.dataset.sourceTest!
     const out = document.querySelector<HTMLElement>(`[data-test-result="${src}"]`)!
-    const typed = t.closest('.settings-section')!.querySelector<HTMLInputElement>('[data-secret]')!.value.trim()
+    const typed = t.closest('.settings-section')!.querySelector<HTMLInputElement>('[data-secret]')?.value.trim() ?? ''
     t.disabled = true
     out.hidden = false; out.className = 'source-test-result'; out.textContent = 'Testing…'
     try {
@@ -4433,6 +4443,7 @@ async function openSettings() {
       api.settings.get(), api.lookup.status(), api.tags.replaygainStatus(),
     ])
     showSecrets(s)
+    loadSourceSettings(paneSettings, s)
     lrclibAppIdInput.value    = s.lrclib_app_id ?? ''
     lyricsRetryDaysInput.value = String(s.lyrics_retry_days ?? 30)
     scanExcludeInput.value    = (s.scan_exclude ?? []).join('\n')
@@ -4710,6 +4721,7 @@ function collectSettings(): Partial<AppSettings> {
   getScanTagCheckboxes().forEach(cb => { if (cb.checked) scanTags.push(cb.dataset.tag!) })
   const update: Partial<AppSettings> = {
     ...readSecrets(),
+    ...collectSourceSettings(paneSettings),
     lrclib_app_id:     lrclibAppIdInput.value.trim(),
     lyrics_retry_days: Math.max(0, Math.round(Number(lyricsRetryDaysInput.value) || 0)),
     rename_on_save:    renameOnSaveInput.checked,

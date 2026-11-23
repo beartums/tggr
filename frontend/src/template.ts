@@ -50,6 +50,7 @@ export const APP_HTML = `
         <div class="rail-h">Sources</div>
         <button type="button" data-sect="integrations">Integrations</button>
         <button type="button" data-sect="metadata">Metadata</button>
+        <button type="button" data-sect="albumsources">Album sources</button>
         <div class="rail-h">Output</div>
         <button type="button" data-sect="writing">Writing</button>
         <button type="button" data-sect="search">Search</button>
@@ -147,6 +148,7 @@ export const APP_HTML = `
           <label class="settings-toggle"><input type="checkbox" data-tag="comment" /><span>Comment</span></label>
           <label class="settings-toggle"><input type="checkbox" data-tag="composer" /><span>Composer</span></label>
           <label class="settings-toggle"><input type="checkbox" data-tag="bpm" /><span>BPM</span></label>
+          <label class="settings-toggle"><input type="checkbox" data-tag="label" /><span>Label</span></label>
           <label class="settings-toggle"><input type="checkbox" data-tag="lyrics" /><span>Lyrics</span></label>
           <label class="settings-toggle"><input type="checkbox" data-tag="compilation" /><span>Compilation</span></label>
         </div>
@@ -197,6 +199,44 @@ export const APP_HTML = `
         <label class="field-label">Look again after (days)
           <input id="setting-lyrics-retry-days" type="number" min="0" step="1" title="Tracks LRCLIB had nothing for are skipped by lookups. After this many days they're due again: the Lyrics lookup filter “Not found N+ days ago” and the retry option in Look up all… 0 = never." />
         </label>
+      </div>
+      </div>
+      <div class="settings-sect" data-sect="albumsources" hidden>
+      <div class="settings-section">
+        <div class="settings-section-title">Deezer</div>
+        <p class="settings-hint">Covers (1000 px), the record label and the release date. Found by the disc's barcode, its tracks' ISRCs, or a search checked track by track. No key needed.</p>
+        <div class="tog-row"><button type="button" class="tog" data-src-on="deezer" aria-pressed="true" title="Click to stop using Deezer, or to use it again">Use Deezer</button></div>
+        <div class="tog-row" data-src-fields="deezer"><span class="settings-hint">May fill:</span>
+          <button type="button" class="tog" data-src-field="deezer:cover" aria-pressed="true" title="Click to let Deezer offer covers, or to stop">Cover</button>
+          <button type="button" class="tog" data-src-field="deezer:label" aria-pressed="true" title="Click to let Deezer fill an empty label, or to stop">Label</button>
+          <button type="button" class="tog" data-src-field="deezer:year" aria-pressed="true" title="Click to let Deezer fill an empty year (from its release date), or to stop">Year</button></div>
+        <button type="button" class="btn btn-ghost btn-sm" data-source-test="deezer" title="Ask Deezer for one album">Test</button>
+        <div class="source-test-result" data-test-result="deezer" hidden></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">iTunes</div>
+        <p class="settings-hint">Large covers (asked for at 1200 px; an old release may only have a smaller one) and the release date. Found by barcode or a checked search; it has no label. No key needed, but it answers about 20 requests a minute, so a lookup takes a few seconds.</p>
+        <div class="tog-row"><button type="button" class="tog" data-src-on="itunes" aria-pressed="true" title="Click to stop using iTunes, or to use it again">Use iTunes</button></div>
+        <div class="tog-row" data-src-fields="itunes"><span class="settings-hint">May fill:</span>
+          <button type="button" class="tog" data-src-field="itunes:cover" aria-pressed="true" title="Click to let iTunes offer covers, or to stop">Cover</button>
+          <button type="button" class="tog" data-src-field="itunes:year" aria-pressed="true" title="Click to let iTunes fill an empty year (from its release date), or to stop">Year</button></div>
+        <button type="button" class="btn btn-ghost btn-sm" data-source-test="itunes" title="Ask iTunes for one album">Test</button>
+        <div class="source-test-result" data-test-result="itunes" hidden></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Cover order</div>
+        <p class="settings-hint">Where Change cover and Find covers look first. The first source in this order with a confirmed album also gives the label and the year.</p>
+        <ol id="cover-order" class="cover-order"></ol>
+        <input type="hidden" id="cover-order-value" />
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Search matches</div>
+        <p class="settings-hint">A barcode or ISRC match names the album, so it's used at once. A match found by searching is checked track by track; it waits for you to confirm it (the Quality view <em>Unconfirmed source matches</em>), unless you let a strong one through.</p>
+        <div class="tog-row">
+          <button type="button" class="tog" data-src-policy="ask" aria-pressed="true" title="Every search match waits for you to confirm it">Always ask</button>
+          <button type="button" class="tog" data-src-policy="auto" aria-pressed="false" title="Search matches scoring at least this are accepted without asking">Accept at or above</button>
+          <input type="number" id="src-threshold" min="0.5" max="1" step="0.05" title="Score, 0.5 to 1 (a perfect track-by-track match is 1)" />
+        </div>
       </div>
       </div>
       <div class="settings-sect" data-sect="integrations" hidden>
@@ -511,7 +551,8 @@ export const APP_HTML = `
             <img id="cover-img" alt="Cover art" />
             <div id="cover-placeholder" class="cover-placeholder">♪</div>
           </div>
-          <button type="button" id="change-cover-btn" class="btn btn-ghost btn-sm" title="From disk, the Cover Art Archive or a URL">Change Cover…</button>
+          <button type="button" id="change-cover-btn" class="btn btn-ghost btn-sm" title="From disk, the Cover Art Archive, Deezer, iTunes or a URL">Change Cover…</button>
+          <div id="source-chips" class="source-chips" hidden></div>
         </div>
         <audio id="player" class="editor-player" controls preload="none" hidden></audio>
         <div id="spectro-section" class="spectro-section" hidden>
@@ -534,6 +575,7 @@ export const APP_HTML = `
         <label class="field-label">Genre<input name="genre" type="text" /></label>
         <label class="field-label">Composer<input name="composer" type="text" /></label>
         <label class="field-label">BPM<input name="bpm" type="text" inputmode="numeric" /></label>
+        <label class="field-label">Label<input name="label" type="text" /></label>
         <label class="field-check"><input name="compilation" type="checkbox" /><span>Part of a compilation</span></label>
         <label class="field-label">Comment<textarea name="comment" rows="3"></textarea></label>
         <label class="field-label"><span class="field-label-row">Lyrics <button type="button" id="lyrics-search-btn" class="btn btn-link btn-sm" title="Search LRCLIB for this track by hand">Search…</button></span><textarea name="lyrics" rows="4"></textarea></label>

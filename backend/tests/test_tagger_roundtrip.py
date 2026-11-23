@@ -111,3 +111,13 @@ def test_musicbrainz_ids_roundtrip(make_audio, ext):
     assert {k: read_tags(path)[k] for k in _MB} == _MB
     write_tags(path, {"mb_release_group_id": ""})
     assert read_tags(path)["mb_release_group_id"] is None and read_tags(path)["mb_album_id"] == _MB["mb_album_id"]
+
+
+@pytest.mark.parametrize("ext", FORMATS)
+def test_label_roundtrip(make_audio, ext):
+    """The record label, where Picard keeps it: TPUB / LABEL / the iTunes LABEL atom."""
+    path = make_audio(ext)
+    write_tags(path, {"label": "Columbia"})
+    assert read_tags(path)["label"] == "Columbia"
+    write_tags(path, {"label": ""})
+    assert read_tags(path)["label"] is None

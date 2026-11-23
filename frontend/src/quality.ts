@@ -78,6 +78,8 @@ export const QUALITY_ISSUES: { key: IssueKey; label: string; warn?: boolean; gro
   { key: 'covers_no_tracks',     label: 'No track covers',        group: 'Cover art' },
   { key: 'covers_both',          label: 'Folder and track covers', group: 'Cover art' },
   { key: 'covers_oversized',     label: 'Larger than the size settings', group: 'Cover art' },
+  { key: 'covers_no_source',     label: 'No cover source',        group: 'Cover art' },
+  { key: 'src_unconfirmed',      label: 'Unconfirmed source matches', group: 'Album sources', warn: true },
   { key: 'mb_no_album',          label: 'No album ID',            group: 'MusicBrainz' },
   { key: 'mb_no_release_group',  label: 'No release group ID',    group: 'MusicBrainz' },
   { key: 'mb_track_ids',         label: 'Track IDs incomplete',   group: 'MusicBrainz' },

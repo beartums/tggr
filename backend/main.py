@@ -34,6 +34,7 @@ from api.staged import router as staged_router
 from api.backup import router as backup_router
 from api.groups import router as groups_router
 from api.home import router as home_router
+from api.sources import router as sources_router
 
 
 @asynccontextmanager
@@ -155,6 +156,7 @@ app.include_router(staged_router, prefix="/api/staged", tags=["staged"])
 app.include_router(backup_router, prefix="/api/backup", tags=["backup"])
 app.include_router(groups_router, prefix="/api/groups", tags=["groups"])
 app.include_router(home_router, prefix="/api/home", tags=["home"])
+app.include_router(sources_router, prefix="/api/sources", tags=["sources"])
 
 # Serve built frontend assets (production only — dev uses Vite's server)
 _static = os.path.join(os.path.dirname(__file__), "static")

@@ -45,6 +45,9 @@ class AppSettings(BaseModel):
     mb_view_not_found: bool = True
     mb_view_not_found_before: str = ""
     scan_tags: list[str] = ALL_SCAN_TAGS
+    # The tags there were when scan_tags was saved: a tag added since is scanned
+    # (switched on) rather than silently left out. [] = saved before this existed.
+    scan_tags_known: list[str] = []
     music_dirs: list[str] = []
     scan_exclude: list[str] = []       # glob patterns; matching paths are skipped
     auto_scan_minutes: int = 0         # 0 = off; else rescan every N minutes
@@ -101,6 +104,27 @@ class AppSettings(BaseModel):
     rescan_mode: str = "quiet"
     rescan_delay_seconds: int = 30
     rescan_quiet_minutes: int = 5
+    # Album sources (core/sources.py, Settings → Album sources): Deezer and iTunes,
+    # no keys. Each can be switched off.
+    source_deezer: bool = True
+    source_itunes: bool = True
+    # Where a cover is looked for first (Find covers): caa = the Cover Art Archive.
+    cover_order: list[str] = ["caa", "itunes", "deezer", "discogs"]
+    # What each source may fill, and only where the tag is empty: cover, label, year.
+    # iTunes has no label.
+    source_fields: dict[str, list[str]] = {"deezer": ["cover", "label", "year"], "itunes": ["cover", "year"]}
+    # A text-search match: "ask" (it waits for you) or "auto" (accepted at
+    # source_auto_threshold or above). Barcode / ISRC matches are always accepted.
+    source_search_policy: str = "ask"
+    source_auto_threshold: float = 0.9
+    # What the No cover source check counts (its ⚙): albums looked up with nothing found.
+    sources_view_not_found: bool = True
+    sources_view_not_found_before: str = ""
+
+
+# Album sources: where covers come from (Settings → Album sources), and what each may fill.
+COVER_SOURCES = ("caa", "itunes", "deezer", "discogs")
+SOURCE_FIELDS = {"deezer": ("cover", "label", "year"), "itunes": ("cover", "year")}
 
 
 def get_music_dirs() -> list[str]:
@@ -155,15 +179,25 @@ def _load() -> AppSettings:
             s = AppSettings(**data)
         except Exception:
             return AppSettings()
+        known = data.get("scan_tags_known") or _TAGS_BEFORE_KNOWN
+        new = [t for t in ALL_SCAN_TAGS if t not in known and t not in s.scan_tags]
+        if new:
+            s.scan_tags = [*s.scan_tags, *new]
         if s.rename_template.strip() == _OLD_DEFAULT_TEMPLATE:
             s.rename_template = AppSettings.model_fields["rename_template"].default
         return s
     return AppSettings()
 
 
+# The scan tags before scan_tags_known was kept (label came after).
+_TAGS_BEFORE_KNOWN = ["title", "artist", "album", "album_artist", "year", "genre", "track_number", "disc_number",
+                      "comment", "composer", "bpm", "lyrics", "compilation"]
+
+
 def _save(s: AppSettings) -> None:
     settings.config_dir.mkdir(parents=True, exist_ok=True)
     data = s.model_dump()
+    data["scan_tags_known"] = list(ALL_SCAN_TAGS)
     for k in secrets.FIELDS:
         data[k] = secrets.seal(data[k])
     settings.settings_file.write_text(json.dumps(data, indent=2))
@@ -232,6 +266,9 @@ def test_source(source: str, req: SourceTest):
         if not (key or app_id):
             return {"ok": False, "message": "No LRCLIB app ID or key to test"}
         return sourcetest.lrclib(key, app_id)
+    if source in ("deezer", "itunes"):
+        from core.providers import deezer, itunes
+        return (deezer if source == "deezer" else itunes).test()
     from core import integrations
     def typed(v, saved):
         return (v if v is not None else saved).strip()
@@ -336,7 +373,17 @@ def update_settings(update: AppSettings):
     for k in ("rescan_delay_seconds", "rescan_quiet_minutes"):
         if k in sent and not 1 <= sent[k] <= 1440:
             raise HTTPException(400, f"{k}: 1 to 1440")
-    for k in ("lyrics_view_not_found_before", "mb_view_not_found_before"):
+    if "cover_order" in sent:
+        order = [x for x in dict.fromkeys(sent["cover_order"]) if x in COVER_SOURCES]
+        sent["cover_order"] = order + [x for x in COVER_SOURCES if x not in order]
+    if "source_fields" in sent:
+        sent["source_fields"] = {src: sorted({f for f in fields if f in SOURCE_FIELDS[src]})
+                                 for src, fields in sent["source_fields"].items() if src in SOURCE_FIELDS}
+    if "source_search_policy" in sent and sent["source_search_policy"] not in ("ask", "auto"):
+        raise HTTPException(400, "source_search_policy: ask or auto")
+    if "source_auto_threshold" in sent and not 0.5 <= sent["source_auto_threshold"] <= 1:
+        raise HTTPException(400, "source_auto_threshold: 0.5 to 1")
+    for k in ("lyrics_view_not_found_before", "mb_view_not_found_before", "sources_view_not_found_before"):
         if sent.get(k):
             try:
                 datetime.date.fromisoformat(sent[k])

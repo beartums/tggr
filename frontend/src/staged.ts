@@ -7,7 +7,7 @@ import { state } from './state'
 const FIELD_LABELS: Record<string, string> = {
   title: 'Title', artist: 'Artist', album: 'Album', album_artist: 'Album Artist',
   year: 'Year', genre: 'Genre', track_number: 'Track #', disc_number: 'Disc #',
-  comment: 'Comment', composer: 'Composer', bpm: 'BPM', lyrics: 'Lyrics',
+  comment: 'Comment', composer: 'Composer', bpm: 'BPM', label: 'Label', lyrics: 'Lyrics',
   compilation: 'Compilation', mb_track_id: 'MB Track ID', mb_artist_id: 'MB Artist ID',
   mb_album_id: 'MB Album ID', mb_album_artist_id: 'MB Album Artist ID',
   mb_release_group_id: 'MB Release Group ID', mb_release_track_id: 'MB Release Track ID',

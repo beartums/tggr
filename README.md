@@ -113,10 +113,15 @@ gives it away, even though its format and bitrate say lossless.
   the rip or computed from track lengths), barcode and ISRCs are kept, and
   **Add to MusicBrainz…** opens a pre-filled *Add release* page for a disc
   MusicBrainz doesn't have.
-- **Cover art** — from disk, the Cover Art Archive, a MusicBrainz search or a
-  URL, written to the folder, the tracks or both and resized to your settings.
+- **Cover art** — from disk, the Cover Art Archive, a MusicBrainz search,
+  Deezer, iTunes or a URL, written to the folder, the tracks or both and
+  resized to your settings.
   Find covers for many albums at once; **Covers…** moves, copies, shrinks or
   deletes them.
+- **Album sources** — each album found on Deezer and iTunes by its barcode,
+  its ISRCs or a search checked track by track, remembered, and confirmed by
+  you when only a search found it. They offer covers in the order you choose
+  and fill the record label and year where those are empty (staged).
 - **Lyrics** — synced or plain from LRCLIB, looked up in the background for a
   whole library. Query templates per group handle cast albums and
   soundtracks, and you can search by hand. Each track remembers its last

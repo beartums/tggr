@@ -74,6 +74,7 @@ def _migrate(conn) -> None:
         ("isrc", "TEXT"),
         ("rip_match", "TEXT"),
         ("rip_quality", "TEXT"),
+        ("label", "TEXT"),
     ):
         if col not in have:
             conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {decl}")
@@ -89,6 +90,11 @@ def _migrate(conn) -> None:
     # The cover image in each album folder (core/covers.py), found at scan time.
     conn.execute("CREATE TABLE IF NOT EXISTS folder_covers (directory TEXT PRIMARY KEY, name TEXT NOT NULL,"
                  " width INTEGER, height INTEGER, bytes INTEGER)")
+    # Each album folder's album on Deezer / iTunes (core/sourcelinks.py): linked
+    # (confirmed by a barcode / ISRC, or by you) or looked up and not found.
+    conn.execute("CREATE TABLE IF NOT EXISTS source_links (directory TEXT NOT NULL, source TEXT NOT NULL,"
+                 " album_id TEXT, method TEXT, score REAL, reasons TEXT, confirmed INTEGER NOT NULL DEFAULT 0,"
+                 " status TEXT NOT NULL, info TEXT, at REAL NOT NULL, PRIMARY KEY (directory, source))")
     # The last count of each Quality check (api/library.py): shown for checks turned off.
     conn.execute("CREATE TABLE IF NOT EXISTS quality_results (key TEXT PRIMARY KEY, tracks INTEGER NOT NULL,"
                  " albums INTEGER NOT NULL, checked_at REAL NOT NULL)")
