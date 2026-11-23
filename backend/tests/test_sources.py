@@ -81,6 +81,16 @@ def test_barcode_links_outright_and_skips_search():
     assert not any(c[0] == "search" for c in prov.calls)
 
 
+def test_barcode_of_a_bigger_edition_is_offered_not_linked():
+    # Our 5 tracks; the barcode's edition has only 2 of them (a Legacy-style set).
+    other = {**SAME, "tracks": SAME["tracks"][:2] + [dict(t, key=f"9-{i}", title=f"Bonus {i}")
+                                                     for i, t in enumerate(SAME["tracks"][2:])]}
+    prov = FakeProv({"1": other}, barcode={"888880696069": ["1"]}, hits=[])
+    r = sourcematch.find(KOB, prov, album="Kind of Blue", artist="Miles Davis", barcode="888880696069")
+    assert r["link"] is None and r["method"] == "search"
+    assert r["candidates"][0]["id"] == "1" and "barcode" in r["candidates"][0]["reasons"]
+
+
 def test_isrc_needs_a_majority():
     prov = FakeIsrcProv({"1": SAME}, isrc={"A": "1", "B": "1", "C": "9"})
     r = sourcematch.find(KOB, prov, album="Kind of Blue", artist="Miles Davis", isrcs=["a", "B", "C"])

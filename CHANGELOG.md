@@ -5,7 +5,9 @@
 - **Album sources: Deezer and iTunes** (Settings → Album sources; no keys). Each
   album folder is found on them by the strongest evidence first: its
   **barcode** (a CD rip's, or its MusicBrainz release's) or its tracks'
-  **ISRCs** (Deezer) name the album outright; otherwise a search, each hit
+  **ISRCs** (Deezer) name the album outright (a barcode only when at least
+  half the titles are on that edition -- else it is offered for you to
+  confirm, so a bigger edition's barcode doesn't link); otherwise a search, each hit
   checked **track by track** (titles paired as Match album pairs them, then
   track count, length, year). Another artist's album of the same songs, or one
   whose lengths are far off, is never proposed. Each match shows why ("17/17

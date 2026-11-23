@@ -115,16 +115,22 @@ def find(local: list[dict], prov, *, album: str | None, artist: str | None,
     hits that passed the title gate, best first (method "search", or None
     when there were none).
     """
+    # A barcode names an edition, not our tracks: a disc tagged with a bigger
+    # edition's barcode (a Legacy Edition's) must not link to it outright. It
+    # links only when at least half our titles are on it; else it is offered
+    # like a search hit, for the user to confirm.
+    weak = None
     if barcode:
-        best = None
+        best, best_matched = None, 0
         for aid in prov.by_barcode(barcode)[:3]:
             a = prov.album(aid)
             if a:
                 sc = score(local, a, "barcode", artist)
                 if not best or sc["score"] > best["score"]:
-                    best = candidate(a, sc)
-        if best:
+                    best, best_matched = candidate(a, sc), sc["matched"]
+        if best and best_matched * 2 >= len(local):
             return {"method": "barcode", "link": best, "candidates": [best]}
+        weak = best
     by_isrc = getattr(prov, "album_by_isrc", None)
     sample = [i for i in dict.fromkeys(x.strip().upper() for x in isrcs or [] if x and x.strip())][:ISRC_SAMPLE]
     if by_isrc and sample:
@@ -153,4 +159,6 @@ def find(local: list[dict], prov, *, album: str | None, artist: str | None,
         if sc["ok"]:
             out.append(candidate(a, sc))
     out.sort(key=lambda c: -c["score"])
+    if weak and not any(c["source"] == weak["source"] and c["id"] == weak["id"] for c in out):
+        out.insert(0, weak)
     return {"method": "search" if out else None, "link": None, "candidates": out}
