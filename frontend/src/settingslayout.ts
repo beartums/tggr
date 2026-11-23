@@ -11,6 +11,7 @@ const SECTS: Record<string, [string, string]> = {
   scanning:     ['Scanning', 'What a scan reads and skips, and when it runs on its own.'],
   integrations: ['Integrations', "Your own self-hosted music apps. tggr reads Lidarr's naming rules and asks the players to rescan after it writes files."],
   metadata:     ['Metadata', 'Where tags, matches and lyrics come from. MusicBrainz needs no setup; these add to it.'],
+  albumsources: ['Album sources', 'Deezer and iTunes: covers, and the label and year where those tags are empty. Nothing is written until you review it.'],
   writing:      ['Writing', 'How changes reach your files: staging, cover art, volume tags, the trash.'],
   search:       ['Search', 'What the search box looks in.'],
   backup:       ['Backup', 'Everything tggr keeps, in one file: to keep safe, or to move to a new config volume.'],
@@ -25,6 +26,8 @@ const CARDS: Record<string, [string, string]> = {
   'AcoustID':        ['acoustid', 'identify by fingerprint'],
   'Discogs':         ['discogs', 'second match source'],
   'LRCLIB (lyrics)': ['lrclib', 'lyrics'],
+  'Deezer':          ['deezer', 'covers, label, year'],
+  'iTunes':          ['itunes', 'covers, year'],
   'ReplayGain':      ['replaygain', 'even volume'],
 }
 

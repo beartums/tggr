@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- **Album sources: Deezer and iTunes** (Settings → Album sources; no keys). Each
+  album folder is found on them by the strongest evidence first: its
+  **barcode** (a CD rip's, or its MusicBrainz release's) or its tracks'
+  **ISRCs** (Deezer) name the album outright (a barcode only when at least
+  half the titles are on that edition -- else it is offered for you to
+  confirm, so a bigger edition's barcode doesn't link); otherwise a search, each hit
+  checked **track by track** (titles paired as Match album pairs them, then
+  track count, length, year). Another artist's album of the same songs, or one
+  whose lengths are far off, is never proposed. Each match shows why ("17/17
+  titles · length ±1 s · barcode").
+  - **Covers**: Change cover has a **Deezer / iTunes** button, and Find covers
+    looks in the **cover order** you set (Cover Art Archive, iTunes, Deezer,
+    Discogs by default). A match you haven't confirmed is shown, unticked.
+  - **Label and year, only where empty**: **Sources…** in the editor fills them
+    from confirmed matches, staged for review like any edit. tggr now reads and
+    writes the **Label** tag (TPUB, LABEL, the iTunes LABEL atom); it's scanned
+    from the next scan of each file.
+  - **Chips** under the editor's cover: one per source, green confirmed, amber
+    waiting, hollow not found; hover (or press and hold on a touchscreen) for
+    the album, how it matched and its score. Sources… confirms, picks another
+    hit, links an album id you paste, or unlinks.
+  - Search matches **wait for you** (the Quality view *Unconfirmed source
+    matches*) unless you let ones at or above a score through. New Cover art
+    view **No cover source**, with a ⚙ for albums looked up with nothing found.
 - **Missing lyrics has its own settings**: the ⚙ after its name in the Quality
   panel. Count **instrumental** tracks (off by default) and **not found** ones
   (on), all of them or only those last tried before a date. Counts, the list

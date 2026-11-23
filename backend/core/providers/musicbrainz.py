@@ -340,6 +340,7 @@ def get_release(mb_album_id: str) -> dict | None:
         "album_artist": rel.get("artist-credit-phrase"),
         "mb_album_artist_id": aa_id,
         "date": rel.get("date"),
+        "barcode": rel.get("barcode") or None,
         "original_year": (rg.get("first-release-date") or "")[:4] or None,
         "year": (rel.get("date") or "")[:4] or None,
         "country": rel.get("country"),

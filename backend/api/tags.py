@@ -50,6 +50,7 @@ class TagUpdate(BaseModel):
     comment: Optional[str] = None
     composer: Optional[str] = None
     bpm: Optional[str] = None
+    label: Optional[str] = None
     lyrics: Optional[str] = None
     compilation: Optional[str] = None
     mb_track_id: Optional[str] = None

@@ -17,7 +17,7 @@ from fastapi.responses import PlainTextResponse
 
 from core.config import settings
 from core.database import db
-from core import duplicates, groups as grp, layout, lyricsgroups, lyricsjob, mblookups, search, staging
+from core import duplicates, groups as grp, layout, lyricsgroups, lyricsjob, mblookups, search, sourcelinks, staging
 from core.multivalue import MULTI_FIELDS, split_values
 from core.history import STAGEABLE, log_change, snapshot, list_changes, undo_change
 
@@ -62,6 +62,10 @@ _ISSUE_CLAUSES: dict[str, str] = {
     # match on the table of contents (check it), or cdparanoia had trouble.
     "rip_near": "rip_match = 'near'",
     "rip_trouble": "COALESCE(rip_quality, '') NOT IN ('', 'clean')",
+    # Album sources (core/sourcelinks.py): a search match waiting for you, and
+    # no cover where no source has the album (its ⚙: looked up, nothing found).
+    "src_unconfirmed": sourcelinks.UNCONFIRMED_SQL,
+    "covers_no_source": "",          # from the view settings: _base_clause()
     # In two groups whose layouts differ (core/groups.py): can't be re-filed.
     "group_layout_conflict": f"group_layout_conflict({layout.GROUP_IDS_SQL})",
 }
@@ -76,7 +80,7 @@ def _issue_clause(key: str, gs: list[dict] | None = None) -> str:
 
 def _base_clause(key: str) -> str:
     """The SQL for an issue; oversized cover art depends on the size settings."""
-    if key not in ("covers_oversized", "missing_lyrics", "mb_no_album"):
+    if key not in ("covers_oversized", "missing_lyrics", "mb_no_album", "covers_no_source"):
         return _ISSUE_CLAUSES[key]
     from api.config import _load
     cfg = _load()
@@ -86,6 +90,9 @@ def _base_clause(key: str) -> str:
                                      day(cfg.lyrics_view_not_found_before))
     if key == "mb_no_album":
         return mblookups.no_album_sql(_ISSUE_CLAUSES[key], cfg.mb_view_not_found, day(cfg.mb_view_not_found_before))
+    if key == "covers_no_source":
+        return sourcelinks.no_source_sql(_ISSUE_CLAUSES["covers_none"], cfg.sources_view_not_found,
+                                         day(cfg.sources_view_not_found_before))
     parts = []
     if cfg.cover_embed_size:
         parts.append(f"MAX(COALESCE(cover_width, 0), COALESCE(cover_height, 0)) > {int(cfg.cover_embed_size)}")

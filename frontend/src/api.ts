@@ -33,6 +33,7 @@ export interface Track {
   comment: string | null
   composer: string | null
   bpm: string | null
+  label: string | null
   lyrics: string | null
   compilation: string | null
   mb_track_id: string | null
@@ -206,6 +207,16 @@ export interface AppSettings {
   lyrics_view_not_found_before: string
   mb_view_not_found: boolean
   mb_view_not_found_before: string
+  // Album sources (Settings → Album sources).
+  scan_tags_known?: string[]
+  source_deezer: boolean
+  source_itunes: boolean
+  cover_order: CoverSourceKey[]
+  source_fields: Partial<Record<SourceKey, SourceField[]>>
+  source_search_policy: 'ask' | 'auto'
+  source_auto_threshold: number
+  sources_view_not_found: boolean
+  sources_view_not_found_before: string
   cover_target: 'folder' | 'tracks' | 'both'
   cover_embed_size: number
   search_fields: string[]
@@ -236,6 +247,39 @@ export interface AppSettings {
   default_music_dir?: string
   env_library_roots?: string[]
   effective_library_roots?: string[]
+}
+
+// ─── Album sources (backend core/sources.py) ─────────────────────────────────
+export type SourceKey = 'deezer' | 'itunes'
+export type CoverSourceKey = 'caa' | SourceKey | 'discogs'
+export type SourceField = 'cover' | 'label' | 'year'
+/** A folder's album on one source: linked (confirmed or waiting for you) or looked up and not found. */
+export interface SourceLink {
+  directory: string; source: SourceKey; status: 'linked' | 'missing'; album_id: string | null
+  method: 'barcode' | 'isrc' | 'search' | 'manual' | null; score: number | null; reasons: string | null
+  confirmed: boolean; at: number
+  title?: string | null; artist?: string | null; date?: string | null; label?: string | null; barcode?: string | null
+  link?: string | null; cover?: string | null; cover_size?: number | null; tracks?: number
+}
+/** A scored album a search (or the evidence) found. */
+export interface SourceCandidate {
+  source: SourceKey; id: string; title: string | null; artist: string | null; date: string | null; label: string | null
+  barcode: string | null; link: string | null; cover: string | null; cover_size: number | null; tracks: number
+  score: number; reasons: string
+}
+export interface SourceMatch {
+  directory: string; album?: string | null; artist?: string | null; barcode?: string | null
+  links: Partial<Record<SourceKey, SourceLink>>; candidates: Partial<Record<SourceKey, SourceCandidate[]>>
+  errors: Record<string, string>
+}
+export interface SourceCover {
+  source: CoverSourceKey; label: string; url: string; size: number | null; confirmed: boolean
+  title: string | null; artist: string | null; reasons: string | null; method: string | null
+}
+export interface SourceFill {
+  albums: { directory: string; tracks: number; changes: number; fields: string[]
+            values: Partial<Record<'label' | 'year', { value: string; source: string }>> }[]
+  changes: number; staged: boolean; applied?: number; errors?: { error: string }[]
 }
 
 /** One field (or "path": the move) a written change set on one track. */
@@ -329,7 +373,7 @@ export interface DiscInfo {
 }
 
 export type IssueKey =
-  'missing_title' | 'missing_artist' | 'missing_album' | 'missing_year' | 'missing_genre' | 'missing_track_number' | 'missing_album_artist' | 'duplicate_tracks' | 'duplicate_albums' | 'missing_files' | 'not_in_layout' | 'missing_lyrics' | 'covers_none' | 'covers_no_folder' | 'covers_no_tracks' | 'covers_both' | 'covers_oversized' | 'mb_no_album' | 'mb_no_release_group' | 'mb_track_ids' | 'mb_mixed_album' | 'rip_near' | 'rip_trouble' | 'group_layout_conflict'
+  'missing_title' | 'missing_artist' | 'missing_album' | 'missing_year' | 'missing_genre' | 'missing_track_number' | 'missing_album_artist' | 'duplicate_tracks' | 'duplicate_albums' | 'missing_files' | 'not_in_layout' | 'missing_lyrics' | 'covers_none' | 'covers_no_folder' | 'covers_no_tracks' | 'covers_both' | 'covers_oversized' | 'mb_no_album' | 'mb_no_release_group' | 'mb_track_ids' | 'mb_mixed_album' | 'rip_near' | 'rip_trouble' | 'group_layout_conflict' | 'src_unconfirmed' | 'covers_no_source'
 /** One Quality check: its last count (null: never run), when, and whether it's turned off. */
 export interface IssueEntry { tracks: number | null; albums: number | null; at: number | null; off: boolean }
 export type IssueCount = Record<IssueKey, IssueEntry>
@@ -740,6 +784,22 @@ export const api = {
     status: () => request<{ available: boolean }>('GET', '/api/spectrogram/status'),
   },
 
+  sources: {
+    links: (directory: string) =>
+      request<Partial<Record<SourceKey, SourceLink>>>('GET', `/api/sources/links?directory=${encodeURIComponent(directory)}`),
+    match: (trackIds: number[], refresh = false, sources?: SourceKey[]) =>
+      request<SourceMatch>('POST', '/api/sources/match', { track_ids: trackIds, refresh, sources }),
+    /** Without albumId: confirm the link there is. With: link to that album (picked by you). */
+    link: (directory: string, source: SourceKey, albumId?: string) =>
+      request<SourceLink>('POST', '/api/sources/link', { directory, source, album_id: albumId }),
+    unlink: (directory: string, source: SourceKey) =>
+      request<{ removed: boolean }>('POST', '/api/sources/unlink', { directory, source }),
+    covers: (trackIds: number[]) =>
+      request<{ directory: string; order: CoverSourceKey[]; covers: SourceCover[]; errors: Record<string, string> }>(
+        'POST', '/api/sources/covers', { track_ids: trackIds }),
+    fill: (trackIds: number[], preview = true) =>
+      request<SourceFill>('POST', '/api/sources/fill', { track_ids: trackIds, preview }),
+  },
   covers: {
     url: (trackId: number) => `/api/covers/${trackId}`,
     set: async (trackIds: number[], src: { file?: File; url?: string; mb_album_id?: string }) => {

@@ -2,7 +2,7 @@
 // folder (cover.jpg) and the tracks, album by album. Runs a few albums per
 // request so a big selection never hits the proxy's timeout. Anything removed
 // goes to the trash first. Backend: /api/covers/albums (core/covers.py).
-import { api, CoverAction, CoverAlbum } from './api'
+import { api, CoverAction, CoverAlbum, CoverSourceKey, SourceCover } from './api'
 import { toast } from './toast'
 import { esc } from './util'
 import { errText, shortPath } from './staged'
@@ -126,6 +126,7 @@ export function openChangeCover(ids: number[], mbAlbumId: string | null, guess: 
         <div class="cc-sources">
           <label class="btn btn-ghost btn-sm">From disk…<input id="cc-file" type="file" accept="image/jpeg,image/png,image/webp" hidden /></label>
           <button type="button" class="btn btn-ghost btn-sm" id="cc-caa" ${mbAlbumId ? '' : 'disabled title="The selection has no MusicBrainz release — search below"'}>This album's release</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="cc-src" title="This album's cover on Deezer and iTunes (Settings → Album sources)">Deezer / iTunes</button>
           <form id="cc-url-form" class="cc-url"><input id="cc-url" type="url" placeholder="https://… image URL" autocomplete="off" />
             <button class="btn btn-ghost btn-sm" type="submit">Load</button></form>
         </div>
@@ -183,11 +184,15 @@ export function openChangeCover(ids: number[], mbAlbumId: string | null, guess: 
 
   const albumEl = $<HTMLInputElement>('#cc-album'), artistEl = $<HTMLInputElement>('#cc-artist'), resEl = $('#cc-results')
   albumEl.value = guess.album; artistEl.value = guess.artist
+  // The results area shows the latest search only (a slow one never overwrites a newer one).
+  let resTok = 0
   $<HTMLFormElement>('#cc-search').addEventListener('submit', async e => {
     e.preventDefault()
+    const tok = ++resTok
     resEl.textContent = 'Searching…'
     try {
       const found = await api.covers.search(albumEl.value, artistEl.value)
+      if (tok !== resTok) return
       if (!found.length) { resEl.textContent = 'No releases found'; return }
       resEl.innerHTML = found.map(r => `<button type="button" class="cc-hit" data-id="${esc(r.mb_album_id)}" title="${esc(`${r.album} · ${r.artist ?? ''} · ${r.date ?? ''} ${r.country ?? ''}`)}">
         <img src="https://coverartarchive.org/release/${esc(r.mb_album_id)}/front-250" alt="" loading="lazy" />
@@ -195,18 +200,36 @@ export function openChangeCover(ids: number[], mbAlbumId: string | null, guess: 
         + '<div id="cc-hidden" class="ma-dim cc-hidden"></div>'
       let hidden = 0
       resEl.querySelectorAll<HTMLImageElement>('.cc-hit img').forEach(i => i.addEventListener('error', () => {
-        i.closest('.cc-hit')!.remove()
+        const note = overlay.querySelector<HTMLElement>('#cc-hidden')
+        if (tok !== resTok || !note) return      // these results were replaced meanwhile
+        i.closest('.cc-hit')?.remove()
         hidden++
         const left = resEl.querySelectorAll('.cc-hit').length
-        $('#cc-hidden').textContent = `${hidden} release${hidden !== 1 ? 's' : ''} without art hidden${left ? '' : ' — try another release or search'}`
+        note.textContent = `${hidden} release${hidden !== 1 ? 's' : ''} without art hidden${left ? '' : ' — try another release or search'}`
       }))
-    } catch (err) { resEl.textContent = errText(err) }
+    } catch (err) { if (tok === resTok) resEl.textContent = errText(err) }
   })
   resEl.addEventListener('click', e => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('.cc-hit')
     if (!b) return
     resEl.querySelectorAll('.cc-hit').forEach(x => x.classList.toggle('cc-picked', x === b))
-    show({ mb_album_id: b.dataset.id! }, `https://coverartarchive.org/release/${b.dataset.id}/front-500`)
+    if (b.dataset.url) show({ url: b.dataset.url }, b.dataset.url)
+    else show({ mb_album_id: b.dataset.id! }, `https://coverartarchive.org/release/${b.dataset.id}/front-500`)
+  })
+  $('#cc-src').addEventListener('click', async () => {
+    const tok = ++resTok
+    resEl.textContent = 'Asking Deezer and iTunes… (iTunes takes a few seconds)'
+    try {
+      const r = await api.sources.covers(ids)
+      if (tok !== resTok) return
+      const found = r.covers.filter(c => c.source !== 'caa')
+      const errs = Object.entries(r.errors).map(([k, v]) => `${k}: ${v}`).join(' · ')
+      if (!found.length) { resEl.textContent = `No cover found on the album sources${errs ? ` (${errs})` : ''}`; return }
+      resEl.innerHTML = found.map(c => `<button type="button" class="cc-hit" data-url="${esc(c.url)}" title="${esc(coverTitle(c))}">
+        <img src="${esc(c.url)}" alt="" loading="lazy" />
+        <span>${esc(c.label)}${c.confirmed ? '' : ' <span class="src-warn">· check it</span>'}</span>
+        <span class="ma-dim">${esc(c.title ?? '')}${c.size ? ` · ${c.source === 'itunes' ? 'up to ' : ''}${c.size} px` : ''}</span></button>`).join('')
+    } catch (err) { if (tok === resTok) resEl.textContent = errText(err) }
   })
   if (!mbAlbumId && (guess.album || guess.artist)) $<HTMLFormElement>('#cc-search').requestSubmit()
 
@@ -360,10 +383,35 @@ export function openBulkCovers(albums: CoverAlbum[], onDone: () => Promise<void>
     })
   })
 
+  // Where to look, in the cover order (Settings → Album sources): the Cover Art
+  // Archive (below), or the album sources' covers for the folder.
+  let order: CoverSourceKey[] = ['caa', 'itunes', 'deezer', 'discogs']
+  const ready = api.settings.get().then(s => { if (s.cover_order?.length) order = s.cover_order }).catch(() => { /* defaults */ })
+
+  async function find(r: BulkRow) {
+    await ready
+    let fromSources: SourceCover[] | null = null
+    for (const src of order) {
+      if (closed || r.src) return
+      if (src === 'caa') { if (await findCaa(r)) return; continue }
+      if (!fromSources) {
+        try { fromSources = (await api.sources.covers(r.a.track_ids)).covers } catch { fromSources = [] }
+      }
+      const c = fromSources.find(x => x.source === src)
+      if (c && !r.src) {
+        Object.assign(r, { src: { url: c.url }, preview: c.url, status: 'found', on: c.confirmed,
+                           label: `${c.label}: ${[c.title, c.artist].filter(Boolean).join(' · ')}${c.size ? ` · ${c.source === 'itunes' ? 'up to ' : ''}${c.size} px` : ''}`
+                                  + (c.confirmed ? '' : ' — not confirmed, check it') })
+        return
+      }
+    }
+    if (!r.src) r.status = 'none'
+  }
+
   // The best release with art: its own first, then the search, best score first
   // (less when the title or artist doesn't match ours); ties go to the same
-  // track count, then CD.
-  async function find(r: BulkRow) {
+  // track count, then CD. True when one was found.
+  async function findCaa(r: BulkRow): Promise<boolean> {
     const a = r.a, n = a.track_ids.length
     type Cand = { id: string; label: string; score: number }
     const cands: Cand[] = a.mb_album_id ? [{ id: a.mb_album_id, label: 'Its MusicBrainz release', score: 2 }] : []
@@ -380,16 +428,16 @@ export function openBulkCovers(albums: CoverAlbum[], onDone: () => Promise<void>
     }
     cands.sort((x, y) => y.score - x.score)
     for (const c of cands.slice(0, PROBES)) {
-      if (closed || r.src) return
+      if (closed || r.src) return true
       if (await hasArt(caa(c.id))) {
-        if (r.src) return      // picked by hand meanwhile
+        if (r.src) return true      // picked by hand meanwhile
         const weak = c.score < 0.9
         Object.assign(r, { src: { mb_album_id: c.id }, preview: caa(c.id), status: 'found', on: !weak,
-                           label: c.label + (weak ? ' — weak match, check it' : '') })
-        return
+                           label: `Cover Art Archive: ${c.label}` + (weak ? ' — weak match, check it' : '') })
+        return true
       }
     }
-    if (!r.src) r.status = 'none'
+    return false
   }
 
   ;(async () => {
@@ -434,4 +482,9 @@ export function openBulkCovers(albums: CoverAlbum[], onDone: () => Promise<void>
     else if (failed) toast(`Covers: ${failed} album${failed !== 1 ? 's' : ''} failed`, 'error')
     if (!failed) close()
   })
+}
+
+function coverTitle(c: SourceCover): string {
+  return `${c.label}: ${[c.title, c.artist].filter(Boolean).join(' · ')}\n${c.reasons ?? ''}\n`
+    + (c.confirmed ? 'The album is confirmed' : 'Not confirmed: a search match (Sources… in the editor confirms it)')
 }

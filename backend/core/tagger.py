@@ -11,7 +11,7 @@ from typing import Any
 
 import mutagen
 from mutagen.easyid3 import EasyID3
-from mutagen.easymp4 import EasyMP4
+from mutagen.easymp4 import EasyMP4, EasyMP4Tags
 
 from core.multivalue import MULTI_FIELDS, join_values, split_values
 
@@ -22,6 +22,12 @@ for _key, _atom in (("composer", "\xa9wrt"),):
         EasyMP4.RegisterTextKey(_key, _atom)
 if "bpm" not in EasyMP4.Get:
     EasyMP4.RegisterIntKey("bpm", "tmpo")
+# The record label, where Picard keeps it: TPUB (MP3), LABEL (Vorbis comments:
+# the easy key is the comment name), an iTunes freeform LABEL atom (MP4).
+if "label" not in EasyID3.valid_keys:
+    EasyID3.RegisterTextKey("label", "TPUB")
+if "label" not in EasyMP4.Get:
+    EasyMP4Tags.RegisterFreeformKey("label", "LABEL")
 
 AUDIO_EXTENSIONS = {".mp3", ".flac", ".m4a", ".aac", ".ogg", ".oga"}
 # Any audio file, tggr reads it or not: a folder holding one of these is never
@@ -44,6 +50,7 @@ _TO_EASY: dict[str, str] = {
     "comment": "comment",
     "composer": "composer",
     "bpm": "bpm",
+    "label": "label",
 }
 
 _FROM_EASY: dict[str, str] = {v: k for k, v in _TO_EASY.items()}
